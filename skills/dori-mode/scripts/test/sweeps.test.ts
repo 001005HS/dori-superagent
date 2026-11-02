@@ -212,4 +212,5 @@ test("a [REPORT] template with an unfilled placeholder is source, not a report: 
   expect(lastReportLine(screen, "demo-lane")).toBe(emitted);
   expect(lastReportLine('echo "[REPORT] demo-lane | done | ${message}"', "demo-lane")).toBeNull();
   expect(lastReportLine("[REPORT] demo-lane | done | PR #12 merged", "demo-lane")).toBe("[REPORT] demo-lane | done | PR #12 merged");
+  expect(lastReportLine("[REPORT] demo-lane | milestone | added getUser({id}) and ${HOME} docs", "demo-lane")).toBe("[REPORT] demo-lane | milestone | added getUser({id}) and ${HOME} docs");
 });
