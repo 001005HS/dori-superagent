@@ -162,13 +162,31 @@ Both the harness and Dori mode ship a command named `dori`. Install one of them 
 
 A minimal experiment. The harness is about 660 lines of TypeScript on Bun with zero runtime dependencies, and it is not our production stack. Left out on purpose: the cross-machine mesh, heavy-slot scheduling, the chat and ticket-tracker bridges, and receipts for whole test suites. What is here is the part that runs on herdr and omo alone: roles, lanes, the inbox, the duty loop, and the review and merge gate. Dori mode in `skills/dori-mode` is a separate CLI with its own messenger pieces, host guard and heavy-slot runner; the harness imports nothing from it.
 
+## Telemetry
+
+dori sends anonymous usage counts the same way omo does: OTLP/HTTP JSON logs to the omo collector at `https://t.omo.dev`. The identity is a random install id kept in `~/.dori/telemetry.json`, and only its sha256 is sent. On the first send the collector mints a per-install ingest key from that hash (`POST /v1/register`); the key is cached in `~/.dori/telemetry.json` and minted again after the collector answers 401. No shared key ships in the code. The first run prints a one-line notice. Turn it off with `DORI_TELEMETRY=0` (`DO_NOT_TRACK=1` also works), and point it at another collector with `DORI_TELEMETRY_ENDPOINT`.
+
+| event | when | fields |
+|---|---|---|
+| `dori.installed` | first run | none |
+| `dori.daily_active` | once per UTC day, on any dori command | `day_utc` |
+| `dori.lane_started` | `dori start` | `open_lanes` |
+| `dori.lane_ready` | `dori ready` | `evidence_count`, `lane_minutes` |
+| `dori.review_completed` | `dori review` | `verdict`: `CLEAR` or `BLOCK` |
+| `dori.merge_decided` | `dori merge` without `--dry-run` | `outcome`: `merged`, `no_receipt`, `review_block`, `no_checks`, `checks_red`, `checks_all_skipped` |
+| `dori.duty_summary` | at most once an hour, from the duty loop | `ticks`, `flushed`, `nudges`, `escalations`, `lost` |
+
+`dori.daily_active` is what gives the daily, weekly and monthly active counts. Actives are counted per install, so the rare second copy from two runs starting at the same moment does not change them. Every record also carries the resource fields: service name and version, the install hash, a CI flag, the OS type (`darwin`, `linux` or `windows`; other systems send nothing) and version, and the CPU architecture. Never sent: paths, repo names, PR numbers, lane keys, briefs, messages or any other text. Sending runs in the background with a 2 second timeout per request; a command waits at most 2 seconds for it before exiting, and a telemetry failure never fails a command.
+
 ## Tests
 
-`bun test ./test/` at the repo root runs the harness's 9 tests and calls no model. Plain `bun test` would also pick up the Dori mode tests.
+`bun test ./test/` at the repo root runs the harness's 20 tests and calls no model. Plain `bun test` would also pick up the Dori mode tests.
 
-Eight unit tests (`test/harness.test.ts`) run against a fake herdr (`test/fake.ts`): a recorder that stands in for the `herdr` and `gh` binaries, holds panes with a settable agent status, and has a clock the tests move. They cover lane start and READY, the queue-and-batch behaviour of a busy lead, refused unknown targets, nudges at 10 and 20 with escalation at 40 and WAITING lanes left alone, the working and lost states, every branch of the merge gate (no receipt, BLOCK, empty check list, a red check, all checks skipped, CLEAR plus green), and a reviewer with no VERDICT line.
+Eight harness unit tests (`test/harness.test.ts`) run against a fake herdr (`test/fake.ts`): a recorder that stands in for the `herdr` and `gh` binaries, holds panes with a settable agent status, and has a clock the tests move. They cover lane start and READY, the queue-and-batch behaviour of a busy lead, refused unknown targets, nudges at 10 and 20 with escalation at 40 and WAITING lanes left alone, the working and lost states, every branch of the merge gate (no receipt, BLOCK, empty check list, a red check, all checks skipped, CLEAR plus green), and a reviewer with no VERDICT line.
 
-One end-to-end test (`test/e2e.test.ts`) starts a real herdr server in an isolated named session, creates a workspace, registers a lead pane, and starts a lane whose agent is `test/fixtures/fake-agent.sh` in place of omo. The script reads its brief, calls `dori report` and `dori ready`, and the test checks that `[START]`, `[REPORT]` and `[READY]` arrive in the lead pane and that `dori done` closes the lane. It is skipped when `herdr` is not on PATH. `bun run typecheck` runs `tsc --noEmit`.
+Eleven telemetry unit tests (`test/telemetry.test.ts`) cover the opt-out; the notice and `dori.daily_active` once per day; the per-install key minted once, cached, and minted again after a 401; the payload matching the registered schema (scope name and version, allowed resource keys only, counts only); records the collector refuses inside a 200 reply (`partialSuccess.rejectedLogRecords`) being counted; the hourly duty summary; an offline first run that keeps `dori.installed` and `dori.daily_active` pending until a send succeeds; a private (0600) state file, and a corrupt one that never throws; calls that return at once, with a flush that gives up at its deadline; two first runs racing on one home ending up with one install id; and an unreachable collector or a refused registration that never throws and sends no logs.
+
+One end-to-end test (`test/e2e.test.ts`) starts a real herdr server in an isolated named session, creates a workspace, registers a lead pane, and starts a lane whose agent is `test/fixtures/fake-agent.sh` in place of omo. The script reads its brief, calls `dori report` and `dori ready`, and the test checks that `[START]`, `[REPORT]` and `[READY]` arrive in the lead pane and that `dori done` closes the lane. It is skipped when `herdr` is not on PATH and runs with `DORI_TELEMETRY=0`. `bun run typecheck` runs `tsc --noEmit`.
 
 Dori mode has its own 68 tests, against fake herdr, git and gh:
 
