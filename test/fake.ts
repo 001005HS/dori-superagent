@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { Deps } from "../src/harness.ts";
 import { Herdr, type AgentStatus, type Exec } from "../src/herdr.ts";
 import { Store } from "../src/store.ts";
+import type { DutyCounts, TelemetryEvent, Usage } from "../src/telemetry.ts";
 
 type Pane = { status: AgentStatus; received: string[]; ran: string[] };
 
@@ -13,6 +14,14 @@ export class World {
   clock = 1_000_000;
   next = 1;
   gh: (argv: readonly string[]) => { code: number; stdout: string } = () => ({ code: 1, stdout: "" });
+  usage: TelemetryEvent[] = [];
+  dutyCounts: DutyCounts[] = [];
+  touches = 0;
+  recorder: Usage = {
+    touch: async () => { this.touches++; },
+    record: async (e) => { this.usage.push(e); },
+    duty: async (c) => { this.dutyCounts.push(c); },
+  };
   reviewer: (argv: readonly string[]) => { code: number; stdout: string } = () => ({ code: 0, stdout: "VERDICT: CLEAR" });
 
   addPane(id: string, status: AgentStatus = "idle"): Pane {
@@ -58,6 +67,7 @@ export class World {
       now: () => this.clock,
       agentCmd: "omo",
       doriCmd: "dori",
+      usage: this.recorder,
     };
   }
 }

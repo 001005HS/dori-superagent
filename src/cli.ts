@@ -23,6 +23,8 @@ const USAGE = `dori - a proactive multi-session harness on herdr + omo
 
 --text may be omitted to read the message from stdin.`;
 
+const COMMANDS = new Set(["up", "role", "start", "report", "ready", "send", "duty", "review", "merge", "done", "status"]);
+
 type Args = { pos: string[]; flags: Map<string, string[]> };
 
 function parse(argv: readonly string[]): Args {
@@ -87,6 +89,7 @@ function status(d: Deps): void {
 export async function main(argv: readonly string[], d: Deps = defaultDeps()): Promise<number> {
   const a = parse(argv);
   const [cmd, x] = a.pos;
+  if (cmd !== undefined && COMMANDS.has(cmd)) await d.usage.touch();
   switch (cmd) {
     case "up":
       await up(d, resolve(one(a, "cwd") ?? process.cwd()));

@@ -32,6 +32,8 @@ describe("lanes", () => {
     await expect(ready(d, "fix-login", "fixed", [])).rejects.toThrow("evidence");
     await ready(d, "fix-login", "fixed", ["https://github.com/o/r/pull/1"]);
     expect(lead.received.at(-1)).toBe("[READY fix-login] fixed\nevidence: https://github.com/o/r/pull/1");
+    expect(w.usage.map((e) => e.name)).toEqual(["dori.lane_started", "dori.lane_ready"]);
+    expect(JSON.stringify(w.usage)).not.toContain("fix-login");
     await done(d, "fix-login");
     expect(w.panes.has(lane.paneId)).toBe(false);
     expect(d.store.lane("fix-login")!.status).toBe("done");
@@ -127,6 +129,9 @@ describe("review + merge gate", () => {
     gh(w, [{ name: "test", bucket: "pass" }, { name: "docs", bucket: "skipping" }]);
     expect(await mergeGate(d, "o/r#7")).toBe(`MERGED o/r#7 head=${head}`);
     expect(w.calls.at(-1)!.argv).toContain("--match-head-commit");
+    expect(w.usage.filter((e) => e.name === "dori.merge_decided").map((e) => (e as { outcome: string }).outcome))
+      .toEqual(["no_receipt", "review_block", "no_checks", "checks_red", "checks_all_skipped", "merged"]);
+    expect(w.usage.filter((e) => e.name === "dori.review_completed")).toHaveLength(2);
   });
 
   test("a reviewer without a VERDICT line writes no receipt", async () => {
