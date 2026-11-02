@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { main } from "../src/cli.ts";
 import { done, dutyTick, mergeGate, ready, Refusal, report, review, send, startLane } from "../src/harness.ts";
 import { World } from "./fake.ts";
 
@@ -58,6 +59,50 @@ describe("pane messaging", () => {
     expect(lead.received[0]).toContain("second note");
   });
 
+  test("an omo pane that herdr refuses `agent prompt` for (agent_not_ready) still gets the text typed in", async () => {
+    const { w, d, lead } = setup();
+    w.promptFails.set("w1:p1", '{"error":{"code":"agent_not_ready"}}');
+    expect(await send(d, "lead", "hello\n\nlead", "cli")).toBe("DELIVERED");
+    expect(lead.received).toEqual(["hello / lead"]);
+    expect(w.calls).toContainEqual({ cmd: "herdr", argv: ["pane", "send-keys", "w1:p1", "enter"] });
+  });
+
+  test("a failing Enter is retried without typing the text again; after 3 failures it is thrown", async () => {
+    const { w, d, lead } = setup();
+    const enters = () => w.calls.filter((c) => c.argv[1] === "send-keys").length;
+    w.promptFails.set("w1:p1", '{"error":{"code":"agent_not_ready"}}');
+    w.keyFails = 2;
+    await d.herdr.deliver("w1:p1", "once", "idle");
+    expect(lead.received).toEqual(["once"]);
+    expect(enters()).toBe(3);
+    w.keyFails = 5;
+    await expect(d.herdr.deliver("w1:p1", "twice", "idle")).rejects.toThrow("key press failed");
+    expect(lead.received).toEqual(["once", "twice"]);
+    expect(enters()).toBe(6);
+  });
+
+  test("another `agent prompt` failure for a message that merely mentions agent_not_ready is still thrown", async () => {
+    const { w, d, lead } = setup();
+    w.promptFails.set("w1:p1", "herdr exploded");
+    await expect(d.herdr.deliver("w1:p1", "a lane quoted agent_not_ready here", "idle")).rejects.toThrow("herdr exploded");
+    expect(lead.received).toEqual([]);
+  });
+
+  test("the typed fallback trims leading and trailing newlines instead of leaving a dangling ' / '", async () => {
+    const { w, d, lead } = setup();
+    w.promptFails.set("w1:p1", '{"error":{"code":"agent_not_ready"}}');
+    await d.herdr.deliver("w1:p1", "\n\nhello\nworld\n\n", "idle");
+    expect(lead.received).toEqual(["hello / world"]);
+  });
+
+  test("agent_not_ready on a pane that is now a plain shell throws instead of typing into the shell", async () => {
+    const { w, d } = setup();
+    const shell = w.addPane("w1:p7", "shell");
+    w.promptFails.set("w1:p7", '{"error":{"code":"agent_not_ready"}}');
+    await expect(d.herdr.deliver("w1:p7", "rm -rf nothing", "idle")).rejects.toThrow("agent_not_ready");
+    expect(shell.received).toEqual([]);
+  });
+
   test("unknown targets are refused instead of guessed", async () => {
     const { d } = setup();
     await expect(send(d, "nobody", "hi", "cli")).rejects.toThrow("unknown target");
@@ -85,6 +130,80 @@ describe("duty loop", () => {
     await report(d, "blocked-on-ci", "WAITING: CI", "waiting");
     w.clock += 60 * 60_000;
     expect((await dutyTick(d)).filter((e) => e.lane === "blocked-on-ci")).toEqual([]);
+  });
+
+  test("a failing inbox flush on one pane does not stop the loop for the other panes", async () => {
+    const { w, d, lead } = setup();
+    const broken = w.addPane("w1:p9", "idle");
+    w.promptFails.set("w1:p9", "herdr exploded");
+    d.store.enqueue("w1:p9", { at: w.clock, from: "cli", text: "to broken" });
+    d.store.enqueue("w1:p1", { at: w.clock, from: "cli", text: "to lead" });
+    const events = await dutyTick(d);
+    expect(events).toContainEqual({ pane: "w1:p9", action: "flush-failed", detail: expect.stringContaining("herdr exploded") });
+    expect(events).toContainEqual({ pane: "w1:p1", action: "flushed" });
+    expect(lead.received).toEqual(["to lead"]);
+    expect(broken.received).toEqual([]);
+  });
+
+  test("a failing lane-phase delivery is recorded as lane-failed and does not stop the other lanes", async () => {
+    const { w, d, brief } = setup();
+    const lost = await startLane(d, "lost-lane", brief, { workspace: "w1" });
+    const stuck = await startLane(d, "stuck-lane", brief, { workspace: "w1" });
+    const fine = await startLane(d, "fine-lane", brief, { workspace: "w1" });
+    w.panes.delete(lost.paneId);
+    w.panes.get(stuck.paneId)!.status = "idle";
+    w.panes.get(fine.paneId)!.status = "idle";
+    w.promptFails.set("w1:p1", "lead exploded");
+    w.promptFails.set(stuck.paneId, "stuck exploded");
+    w.clock = fine.createdAt + 10 * 60_000;
+    const events = await dutyTick(d);
+    expect(events).toContainEqual({ lane: "lost-lane", action: "lane-failed", detail: expect.stringContaining("lead exploded") });
+    expect(events).toContainEqual({ lane: "stuck-lane", action: "lane-failed", detail: expect.stringContaining("stuck exploded") });
+    expect(events).toContainEqual({ lane: "fine-lane", action: "nudge-1" });
+    expect(w.panes.get(fine.paneId)!.received.at(-1)).toContain("idle for 10 minutes");
+  });
+
+  test("a LOST notice whose lead delivery failed once still reaches the lead on the next tick, exactly once", async () => {
+    const { w, d, lead, brief } = setup();
+    const gone = await startLane(d, "gone-lane", brief, { workspace: "w1" });
+    lead.received.length = 0;
+    w.panes.delete(gone.paneId);
+    w.promptFails.set("w1:p1", "lead exploded");
+    expect(await dutyTick(d)).toContainEqual({ lane: "gone-lane", action: "lane-failed", detail: expect.stringContaining("lead exploded") });
+    expect(lead.received).toEqual([]);
+    w.promptFails.delete("w1:p1");
+    const events = await dutyTick(d);
+    expect(events).toContainEqual({ pane: "w1:p1", action: "flushed" });
+    expect(lead.received.filter((m) => m.includes("[LOST gone-lane]"))).toHaveLength(1);
+    expect(await dutyTick(d)).toEqual([]);
+    expect(lead.received.filter((m) => m.includes("[LOST gone-lane]"))).toHaveLength(1);
+  });
+
+  test("the flush-failed detail is herdr's first output line, never the queued message", async () => {
+    const { w, d } = setup();
+    w.addPane("w1:p9", "idle");
+    w.promptFails.set("w1:p9", "herdr exploded\nsecond line");
+    d.store.enqueue("w1:p9", { at: w.clock, from: "cli", text: "SECRET queued message" });
+    const events = await dutyTick(d);
+    expect(events).toEqual([{ pane: "w1:p9", action: "flush-failed", detail: "herdr exploded" }]);
+  });
+
+  test("the duty loop prints a flush-failed line with the reason", async () => {
+    const { w, d } = setup();
+    w.addPane("w1:p9", "idle");
+    w.promptFails.set("w1:p9", "herdr exploded");
+    d.store.enqueue("w1:p9", { at: w.clock, from: "cli", text: "to broken" });
+    const lines: string[] = [];
+    const log = console.log;
+    console.log = (...a: unknown[]) => void lines.push(a.join(" "));
+    try {
+      expect(await main(["duty", "--once"], d)).toBe(0);
+    } finally {
+      console.log = log;
+    }
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toStartWith("DUTY w1:p9 flush-failed: ");
+    expect(lines[0]).toContain("herdr exploded");
   });
 
   test("a working lane counts as activity; a vanished pane is reported LOST", async () => {

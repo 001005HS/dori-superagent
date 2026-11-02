@@ -14,6 +14,10 @@ export class World {
   clock = 1_000_000;
   host: HostLoad = { load1: 1, cores: 8, memFreePct: 50 };
   next = 1;
+  /** pane id -> herdr error text returned by `agent prompt` (exit 1) */
+  promptFails = new Map<string, string>();
+  /** number of upcoming `pane send-keys` calls that fail (exit 1) */
+  keyFails = 0;
   gh: (argv: readonly string[]) => { code: number; stdout: string } = () => ({ code: 1, stdout: "" });
   usage: TelemetryEvent[] = [];
   dutyCounts: DutyCounts[] = [];
@@ -55,8 +59,16 @@ export class World {
     }
     if (group === "pane" && verb === "run") { pane.ran.push(String(argv[3])); return ok({}); }
     if (group === "pane" && verb === "send-text") { pane.received.push(String(argv[3])); return ok({}); }
-    if (group === "pane" && verb === "send-keys") return ok({});
-    if (group === "agent" && verb === "prompt") { pane.received.push(String(argv[3])); return ok({}); }
+    if (group === "pane" && verb === "send-keys") {
+      if (this.keyFails > 0) { this.keyFails--; return { code: 1, stdout: "", stderr: "key press failed" }; }
+      return ok({});
+    }
+    if (group === "agent" && verb === "prompt") {
+      const fail = this.promptFails.get(id!);
+      if (fail) return { code: 1, stdout: "", stderr: fail };
+      pane.received.push(String(argv[3]));
+      return ok({});
+    }
     if (group === "pane" && verb === "close") { this.panes.delete(id!); return ok({}); }
     return { code: 1, stdout: "", stderr: `unhandled ${argv.join(" ")}` };
   };

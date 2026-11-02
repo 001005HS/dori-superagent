@@ -23,6 +23,12 @@ export class HerdrError extends Error {
 /** Agent lifecycle as herdr reports it. `shell` = no recognised agent in the pane. */
 export type AgentStatus = "idle" | "working" | "blocked" | "done" | "unknown" | "shell" | "gone";
 
+/** The terminal needs a moment to finish a bracketed paste before an Enter is read as a submit. */
+const PASTE_SETTLE_MS = 400;
+
+/** How often the Enter that submits typed fallback text is tried before the delivery is reported as failed. */
+const ENTER_ATTEMPTS = 3;
+
 export type PaneRef = { readonly paneId: string; readonly tabId: string; readonly workspaceId: string };
 
 export class Herdr {
@@ -89,7 +95,29 @@ export class Herdr {
       await this.call(["pane", "send-keys", paneId, "enter"]);
       return;
     }
-    await this.call(["agent", "prompt", paneId, text]);
+    try {
+      await this.call(["agent", "prompt", paneId, text]);
+    } catch (e) {
+      // herdr only accepts `agent prompt` for agents it started itself (`herdr agent start`); an omo launched
+      // with `pane run` is detected but refused. Fall back to typing the text and pressing Enter.
+      // Match herdr's own output, never e.message: that carries argv, which includes the delivered text.
+      if (!(e instanceof HerdrError) || !/agent_not_ready/.test(e.result.stderr || e.result.stdout)) throw e;
+      // agent_not_ready also covers an agent that exited and left a shell in front: typing would run the text there.
+      const st = await this.status(paneId);
+      if (st === "shell" || st === "gone") throw e;
+      // A multi-line paste swallows the Enter that follows it, so type the message as one line.
+      await this.call(["pane", "send-text", paneId, text.trim().replace(/\s*\n\s*/g, " / ")]);
+      await Bun.sleep(PASTE_SETTLE_MS);
+      // The text is already in the pane: retry only the Enter, so a flaky key press never re-types the message.
+      for (let attempt = 1; ; attempt++) {
+        try {
+          await this.call(["pane", "send-keys", paneId, "enter"]);
+          return;
+        } catch (err) {
+          if (attempt >= ENTER_ATTEMPTS) throw err;
+        }
+      }
+    }
   }
 
   async read(paneId: string, lines = 80): Promise<string> {
