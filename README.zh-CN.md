@@ -4,7 +4,7 @@
 
 # dori-superagent
 
-一个主动式、多会话的编程 Agent harness：约 660 行 TypeScript，跑在 [herdr](https://github.com/herdrdev/herdr) 和 [omo](https://github.com/code-yeongyu/oh-my-openagent) 之上。
+一个主动式、多会话的编程 Agent harness：约 1,170 行 TypeScript，跑在 [herdr](https://github.com/herdrdev/herdr) 和 [omo](https://github.com/code-yeongyu/oh-my-openagent) 之上。
 
 [English](README.md) | [한국어](README.ko.md) | 简体中文 | [日本語](README.ja.md)
 
@@ -78,7 +78,7 @@ duty 循环是 `dori duty --interval 60`，一个普通进程，跑在 duty omo 
 | Ticket + Mandate | brief 文件 + lane 规则页脚，以及必须附带证据的 READY | `~/.dori/briefs/<key>.md`，`src/harness.ts` 里的 `ready()` |
 | 触发器批处理：事件按轮次成批送达 | 窗格收件箱：发给忙碌窗格的消息先排队，等它空闲时合成一批送达 | `src/harness.ts` 里的 `send()`、`flushInbox()`；`src/store.ts` 里的 `inbox/` |
 | Watchdog | DUTY 循环：清空收件箱，10/20 分钟催促，40 分钟上报，检测消失的窗格 | `src/harness.ts` 里的 `dutyTick()`，`prompts/duty.md`，`prompts/nudge.md` |
-| 准入矩阵、`maxWorkers`（默认 3） | 没有；`dori start` 只拒绝已经开着的 key | `src/harness.ts` 里的 `startLane()` |
+| 准入矩阵、`maxWorkers`（默认 3） | 每小时循环的预算：开着的 lane 最多 `--max-lanes`（默认 3）条，每轮最多 `--max-starts`（默认 2）条，主机负载高时不启动 | `src/loop.ts` 里的 `loopTick()` |
 | 原型里没有 | 合并门禁：精确 head SHA 上的 CLEAR 评审回执，加全绿的检查项；空的检查列表永远不算绿 | `src/harness.ts` 里的 `review()`、`mergeGate()`，`prompts/review.md`，`src/store.ts` 里的 `receipts/` |
 | 原型里没有 | 单一出口规则：lane 和 duty 从不直接和人说话 | `prompts/lead.md`，`prompts/duty.md`，`prompts/lane-footer.md` |
 | 原型里没有 | 全文答案台账：每条 lane 的最终答案、证据链接和日志都落盘保存 | `src/store.ts` 里的 `Lane.final`、`Lane.log` |
@@ -98,17 +98,17 @@ bun link   # puts `dori` on your PATH; or write `bun src/cli.ts` wherever `dori`
 
 ```sh
 dori up
-# UP lead=w1:p1 duty=w1:p2 loop=w1:p3 home=~/.dori
+# UP lead=w1:p1 duty=w1:p2 loop=w1:p3 hourly=w1:p4 home=~/.dori
 ```
 
-这会开一个名为 `dori` 的 herdr 工作区，里面有一个 lead 窗格（system prompt 末尾附加了 `prompts/lead.md` 的 omo）、一个 duty 窗格（附加了 `prompts/duty.md` 的 omo），下面是 duty 循环。和 lead 窗格对话即可。它会自己写 brief（目标、输入、交付物、停止条件、约束；见 [`examples/brief.md`](examples/brief.md)）并开 lane，你也可以在 shell 里手动做同样的事：
+这会开一个名为 `dori` 的 herdr 工作区，里面有一个 lead 窗格（system prompt 末尾附加了 `prompts/lead.md` 的 omo）、一个 duty 窗格（附加了 `prompts/duty.md` 的 omo），下面是 duty 循环，再下面是每小时循环。和 lead 窗格对话即可。它会自己写 brief（目标、输入、交付物、停止条件、约束；见 [`examples/brief.md`](examples/brief.md)）并开 lane，你也可以在 shell 里手动做同样的事：
 
 ```sh
 dori start fix-flaky-login --brief examples/brief.md
-# STARTED fix-flaky-login pane=w1:p4 brief=~/.dori/briefs/fix-flaky-login.md
+# STARTED fix-flaky-login pane=w1:p5 brief=~/.dori/briefs/fix-flaky-login.md
 dori status
 # lead=w1:p1 duty=w1:p2 home=~/.dori
-# fix-flaky-login          working  w1:p4    active 0m ago  start: examples/brief.md
+# fix-flaky-login          working  w1:p5    active 0m ago  start: examples/brief.md
 ```
 
 lane 的 key 要匹配 `^[a-z][a-z0-9-]{1,40}$`，已经开着的 key 会被拒绝。
@@ -144,6 +144,29 @@ READY 必须带证据。没有至少一个 `--evidence` 链接，或者没有最
 
 合并要有精确 head 上的 CLEAR 回执，检查项还得全绿。`dori merge` 用 `gh` 读出 PR 的 head SHA，然后要求 `~/.dori/receipts/` 里存在该 SHA 的、结论为 `CLEAR` 的回执。能写回执的只有 `dori review`。它拿固定在该 SHA 上的 `prompts/review.md` 起一个全新的非交互 omo（`omo -p --no-session`，可选 `--model`）；评审者没有打印 `VERDICT:` 行，就不写回执。接着 `gh pr checks` 必须返回至少一项检查，每一项都必须是 `pass` 或 `skipping`，并且至少有一项是 `pass`。空的检查列表会被拒绝，理由是 "an empty check list is never green"。合并本身是 `gh pr merge --squash --match-head-commit <sha>`。评审之后再 push 会改变 head SHA，回执就对不上了，合并随之被拒绝（`src/harness.ts` 里的 `review()` 和 `mergeGate()`）。
 
+## 每小时循环
+
+`dori up` 还会在第四个窗格里启动 `dori loop`。它每小时把 harness 的状态和实际情况对一遍，并自己开始下一项不需要任何人拍板的工作，lead 不必记着下一步该做什么。完整设计见 [`docs/hourly-loop.md`](docs/hourly-loop.md)。
+
+工作排在 `~/.dori/backlog/` 的待办里，每项一个 brief。可以由 lead 添加，也可以导入带某个标签的、仍然开着的 GitHub issue：
+
+```sh
+dori backlog add search-index --brief briefs/search.md --priority 2
+dori backlog add new-billing --brief briefs/billing.md --decision '按席位收费还是按工作区收费？'
+dori backlog import owner/repo --label dori     # p1..p9 标签设优先级，needs-decision 标签表示待决问题
+dori backlog list
+```
+
+每一轮按顺序做五件事：
+
+1. 同步。lane 已结束、或 READY 的 PR 已合并的项目标为 done。lane 丢失的项目回到队列，丢失两次就变成一个问题。导入的 issue 已关闭的项目被移除。
+2. 漏办检查。3 小时没有汇报的 lane，READY 之后 2 小时没人关的 lane，窗格已经消失的 lane。
+3. 拉取下一项。按优先级、再按先后，启动没有待决问题的开放项目；开着的 lane 最多 `--max-lanes`（默认 3）条，每轮最多启动 `--max-starts`（默认 2）条。1 分钟负载高于核数（或 `--max-load`），或可用内存低于 10% 时，什么都不启动。
+4. 提问。每个待决问题以 `[DECIDE <id>]` 发给 lead 一次，6 小时后最多再提醒一次。lead 去问人，再用 `dori backlog decide <id> --text '...'` 记下答案（答案会追加到该项目的 brief 末尾），或用 `dori backlog drop <id>` 移除该项目。
+5. 汇报。一条 `[LOOP ...]` 消息发给 lead：开着的 lane 数与上限、待办计数、主机负载和可用内存，以及每一条发现。每一轮也会记录在 `~/.dori/loop/runs/`。
+
+循环只做两件事：开 lane、发消息。它从不合并、从不推送、从不关窗格、从不改 lane 记录；它调用 `gh` 只为读取。`dori loop stop --text '原因'` 是急停开关：在 `dori loop resume` 之前，每一轮都什么也不做。锁和上次运行的时间戳保证两个循环不会在同一个小时里重复跑，所以在窗格之外再用 cron 跑 `dori loop --once` 也是安全的。`dori loop status` 显示最近一轮。
+
 ## Dori 模式（`skills/dori-mode`）
 
 Dori 模式是面向 IM 的那一半，2026-10-07 在本仓库发布。它把一个编程 Agent 会话变成常驻的 Agent，你在 IM 里和它说话。这个会话把每项工作交给 herdr 标签页里独立的 Agent 会话，为自己启动过的每个会话维护一份注册表，只有在工作被证明完成之后才关掉它：PR 已合并、issue 已关闭、版本已发布，或者一项它自己能跑的检查。它以一个 skill（`skills/dori-mode/SKILL.md` 加 `references/`）和自己的 Bun + TypeScript CLI 的形式发布，这个 CLI 也叫 `dori`。
@@ -158,15 +181,17 @@ harness 和 Dori 模式都带一个叫 `dori` 的命令。一台机器只装其�
 
 ## 这不是什么
 
-一个最小实验。harness 是 Bun 上约 660 行 TypeScript，零运行时依赖，它不是我们的生产栈。有意不放进来的：跨机器的 mesh、heavy-slot 调度、聊天工具和工单系统的桥接，以及覆盖整个测试套件的回执。放进来的是光靠 herdr 和 omo 就能跑的部分：角色、lane、收件箱、duty 循环，以及评审加合并门禁。`skills/dori-mode` 里的 Dori 模式是一个独立的 CLI，有自己的 IM 组件、主机守护和 heavy-slot 运行器；harness 不从它导入任何东西。
+一个最小实验。harness 是 Bun 上约 1,170 行 TypeScript，零运行时依赖，它不是我们的生产栈。有意不放进来的：跨机器的 mesh、heavy-slot 调度、聊天工具和工单系统的桥接，以及覆盖整个测试套件的回执。放进来的是光靠 herdr 和 omo 就能跑的部分：角色、lane、收件箱、duty 循环、每小时循环和待办，以及评审加合并门禁。`skills/dori-mode` 里的 Dori 模式是一个独立的 CLI，有自己的 IM 组件、主机守护和 heavy-slot 运行器；harness 不从它导入任何东西。
 
 ## 测试
 
-在仓库根目录跑 `bun test ./test/`，执行 harness 的 9 个测试，不调用任何模型。直接跑 `bun test` 会把 Dori 模式的测试也带上。
+在仓库根目录跑 `bun test ./test/`，执行 harness 的 19 个测试，不调用任何模型。直接跑 `bun test` 会把 Dori 模式的测试也带上。
 
 8 个单元测试（`test/harness.test.ts`）跑在一个假 herdr（`test/fake.ts`）上：它是一个录制器，顶替 `herdr` 和 `gh` 二进制，持有若干 Agent 状态可设置的窗格，还带一个由测试拨动的时钟。覆盖的场景有：lane 启动与 READY，lead 忙碌时的排队与成批送达，拒绝未知目标，10 和 20 分钟的催促、40 分钟的上报以及 WAITING 的 lane 不被打扰，working 和 lost 状态，合并门禁的每一个分支（没有回执、BLOCK、空检查列表、一项红色检查、全部跳过、CLEAR 加全绿），以及一个没有 VERDICT 行的评审者。
 
-1 个端到端测试（`test/e2e.test.ts`）在隔离的具名会话里起一个真实的 herdr 服务器，创建工作区，注册 lead 窗格，再启动一条 lane，其 Agent 用 `test/fixtures/fake-agent.sh` 顶替 omo。脚本读取 brief，调用 `dori report` 和 `dori ready`；测试检查 `[START]`、`[REPORT]`、`[READY]` 是否到达 lead 窗格，以及 `dori done` 是否关掉了这条 lane。PATH 上没有 `herdr` 时它会被跳过。`bun run typecheck` 执行 `tsc --noEmit`。
+另有 9 个单元测试（`test/loop.test.ts`）在同一个假 herdr 上跑每小时循环：待办的添加、决定、移除和导入，启动顺序与预算，lane 已满、主机繁忙和有待决问题时的暂缓，done、lost 和已合并 lane 的同步，漏办检查，每个问题只问一次、只提醒一次，急停开关和锁，以及 lane 启动失败。其中两个检查循环从不发出关窗格、合并或推送，漏办检查的测试还确认 lane 记录逐字节不变。
+
+2 个端到端测试（`test/e2e.test.ts`）。第一个在隔离的具名会话里起一个真实的 herdr 服务器，创建工作区，注册 lead 窗格，再启动一条 lane，其 Agent 用 `test/fixtures/fake-agent.sh` 顶替 omo。脚本读取 brief，调用 `dori report` 和 `dori ready`；测试检查 `[START]`、`[REPORT]`、`[READY]` 是否到达 lead 窗格，以及 `dori done` 是否关掉了这条 lane。第二个添加一个待办项目，运行 `dori loop --once`，检查循环启动的 lane 走到 READY、`[LOOP ...]` 到达 lead 窗格，以及 `dori loop stop` 之后的一轮什么也不做。PATH 上没有 `herdr` 时两者都会被跳过。`bun run typecheck` 执行 `tsc --noEmit`。
 
 Dori 模式有自己的 68 个测试，跑在假的 herdr、git 和 gh 上：
 

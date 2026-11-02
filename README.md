@@ -4,7 +4,7 @@
 
 # dori-superagent
 
-A proactive multi-session coding-agent harness in about 660 lines of TypeScript, running on [herdr](https://github.com/herdrdev/herdr) and [omo](https://github.com/code-yeongyu/oh-my-openagent).
+A proactive multi-session coding-agent harness in about 1,170 lines of TypeScript, running on [herdr](https://github.com/herdrdev/herdr) and [omo](https://github.com/code-yeongyu/oh-my-openagent).
 
 English | [한국어](README.ko.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md)
 
@@ -80,7 +80,7 @@ State is JSON on disk under `~/.dori` (or `$DORI_HOME`): `lanes/`, `inbox/`, `br
 | Ticket + Mandate | brief file + lane rules footer, and a READY that must carry evidence | `~/.dori/briefs/<key>.md`, `ready()` in `src/harness.ts` |
 | Trigger batching: events batched per turn | pane inbox: messages to a busy pane queue and arrive as one batch when it goes idle | `send()`, `flushInbox()` in `src/harness.ts`; `inbox/` in `src/store.ts` |
 | Watchdog | DUTY loop: flushes inboxes, nudges at 10/20 minutes, escalates at 40, detects lost panes | `dutyTick()` in `src/harness.ts`, `prompts/duty.md`, `prompts/nudge.md` |
-| Admission matrix, `maxWorkers` (default 3) | none here; `dori start` refuses only a key that is already open | `startLane()` in `src/harness.ts` |
+| Admission matrix, `maxWorkers` (default 3) | hourly loop budget: at most `--max-lanes` (default 3) open lanes, `--max-starts` (default 2) per run, no starts on a loaded host | `loopTick()` in `src/loop.ts` |
 | not in the prototype | gated merge: CLEAR review receipt at the exact head SHA plus green checks; an empty check list is never green | `review()`, `mergeGate()` in `src/harness.ts`, `prompts/review.md`, `receipts/` in `src/store.ts` |
 | not in the prototype | one-voice rule: lanes and duty never talk to the human | `prompts/lead.md`, `prompts/duty.md`, `prompts/lane-footer.md` |
 | not in the prototype | full-text answer ledger: each lane's final answer, evidence links and log kept on disk | `Lane.final`, `Lane.log` in `src/store.ts` |
@@ -100,17 +100,17 @@ Start herdr, then from a shell:
 
 ```sh
 dori up
-# UP lead=w1:p1 duty=w1:p2 loop=w1:p3 home=~/.dori
+# UP lead=w1:p1 duty=w1:p2 loop=w1:p3 hourly=w1:p4 home=~/.dori
 ```
 
-That opens a herdr workspace named `dori` with a lead pane (omo with `prompts/lead.md` appended to its system prompt), a duty pane (omo with `prompts/duty.md`), and the duty loop below it. Talk to the lead pane. It writes a brief (goal, inputs, deliverable, stop condition, constraints; see [`examples/brief.md`](examples/brief.md)) and opens lanes itself, and you can do the same from the shell:
+That opens a herdr workspace named `dori` with a lead pane (omo with `prompts/lead.md` appended to its system prompt), a duty pane (omo with `prompts/duty.md`), the duty loop below it, and the hourly loop below that. Talk to the lead pane. It writes a brief (goal, inputs, deliverable, stop condition, constraints; see [`examples/brief.md`](examples/brief.md)) and opens lanes itself, and you can do the same from the shell:
 
 ```sh
 dori start fix-flaky-login --brief examples/brief.md
-# STARTED fix-flaky-login pane=w1:p4 brief=~/.dori/briefs/fix-flaky-login.md
+# STARTED fix-flaky-login pane=w1:p5 brief=~/.dori/briefs/fix-flaky-login.md
 dori status
 # lead=w1:p1 duty=w1:p2 home=~/.dori
-# fix-flaky-login          working  w1:p4    active 0m ago  start: examples/brief.md
+# fix-flaky-login          working  w1:p5    active 0m ago  start: examples/brief.md
 ```
 
 A lane key matches `^[a-z][a-z0-9-]{1,40}$`, and a key that is already open is refused.
@@ -146,6 +146,29 @@ Nudges at 10, 20 and 40 minutes. `NUDGE_MINUTES = [10, 20, 40]` in `src/harness.
 
 Merge needs a CLEAR receipt at the exact head and green checks. `dori merge` reads the PR's head SHA with `gh`, then requires a receipt for that SHA in `~/.dori/receipts/` with verdict `CLEAR`. Only `dori review` writes receipts. It runs a fresh non-interactive omo (`omo -p --no-session`, optionally `--model`) on `prompts/review.md` pinned to that SHA, and when the reviewer prints no `VERDICT:` line, no receipt is written. Then `gh pr checks` must return at least one check, every check must be `pass` or `skipping`, and at least one must be `pass`. An empty check list is refused with "an empty check list is never green". The merge itself is `gh pr merge --squash --match-head-commit <sha>`. A push after the review changes the head SHA, so the receipt no longer matches and the merge is refused (`review()` and `mergeGate()` in `src/harness.ts`).
 
+## Hourly loop
+
+`dori up` also starts `dori loop` in a fourth pane. Once an hour it checks the harness against reality and starts the next piece of work that needs nobody's decision, so the lead does not have to remember what comes next. The full design is in [`docs/hourly-loop.md`](docs/hourly-loop.md).
+
+Work waits in a backlog under `~/.dori/backlog/`, one brief per item. The lead adds items, or you import open GitHub issues that carry a label:
+
+```sh
+dori backlog add search-index --brief briefs/search.md --priority 2
+dori backlog add new-billing --brief briefs/billing.md --decision 'charge per seat or per workspace?'
+dori backlog import owner/repo --label dori     # label p1..p9 sets the priority, needs-decision marks a question
+dori backlog list
+```
+
+Each run does five things, in order:
+
+1. Sync. An item whose lane is done, or whose READY PR has merged, becomes done. An item whose lane was lost goes back to the queue, and after two losses it turns into a question. An imported item whose issue was closed is dropped.
+2. Missed-work audit. A lane with no report for 3 hours, a READY lane nobody closed for 2 hours, a lane whose pane vanished.
+3. Pull. It starts the next open items with no open question, by priority, then age, within `--max-lanes` (default 3) open lanes and `--max-starts` (default 2) per run. Nothing starts while the 1-minute load is above the core count (or `--max-load`) or less than 10% of memory is free.
+4. Ask. Each open question reaches the lead once as `[DECIDE <id>]`, with one reminder after 6 hours. The lead asks you, then records the answer with `dori backlog decide <id> --text '...'` (the answer is appended to the item's brief) or `dori backlog drop <id>`.
+5. Report. One `[LOOP ...]` message goes to the lead with open lanes against the limit, backlog counts, host load and free memory, and each finding. Every run is also kept in `~/.dori/loop/runs/`.
+
+The loop only opens lanes and sends messages. It never merges, never pushes, never closes a pane and never edits a lane record; its `gh` calls only read. `dori loop stop --text 'why'` is the kill switch: until `dori loop resume`, every run does nothing. A lock and a last-run stamp keep two loops from running the same hour twice, so `dori loop --once` from cron is safe next to the pane. `dori loop status` prints the last run.
+
 ## Dori mode (`skills/dori-mode`)
 
 Dori mode is the messenger-facing half, published in this repository on 2026-10-07. It turns one coding-agent session into an always-on agent you talk to over a messenger. That session hands each job to its own agent session in a herdr tab, keeps a registry of every session it started, and closes one only after the work is proven done: a merged PR, a closed issue, a published version, or a check it can run itself. It ships as a skill (`skills/dori-mode/SKILL.md` plus `references/`) and its own Bun + TypeScript CLI, also called `dori`.
@@ -160,15 +183,17 @@ Both the harness and Dori mode ship a command named `dori`. Install one of them 
 
 ## What this is not
 
-A minimal experiment. The harness is about 660 lines of TypeScript on Bun with zero runtime dependencies, and it is not our production stack. Left out on purpose: the cross-machine mesh, heavy-slot scheduling, the chat and ticket-tracker bridges, and receipts for whole test suites. What is here is the part that runs on herdr and omo alone: roles, lanes, the inbox, the duty loop, and the review and merge gate. Dori mode in `skills/dori-mode` is a separate CLI with its own messenger pieces, host guard and heavy-slot runner; the harness imports nothing from it.
+A minimal experiment. The harness is about 1,170 lines of TypeScript on Bun with zero runtime dependencies, and it is not our production stack. Left out on purpose: the cross-machine mesh, heavy-slot scheduling, the chat and ticket-tracker bridges, and receipts for whole test suites. What is here is the part that runs on herdr and omo alone: roles, lanes, the inbox, the duty loop, the hourly loop and backlog, and the review and merge gate. Dori mode in `skills/dori-mode` is a separate CLI with its own messenger pieces, host guard and heavy-slot runner; the harness imports nothing from it.
 
 ## Tests
 
-`bun test ./test/` at the repo root runs the harness's 9 tests and calls no model. Plain `bun test` would also pick up the Dori mode tests.
+`bun test ./test/` at the repo root runs the harness's 19 tests and calls no model. Plain `bun test` would also pick up the Dori mode tests.
 
 Eight unit tests (`test/harness.test.ts`) run against a fake herdr (`test/fake.ts`): a recorder that stands in for the `herdr` and `gh` binaries, holds panes with a settable agent status, and has a clock the tests move. They cover lane start and READY, the queue-and-batch behaviour of a busy lead, refused unknown targets, nudges at 10 and 20 with escalation at 40 and WAITING lanes left alone, the working and lost states, every branch of the merge gate (no receipt, BLOCK, empty check list, a red check, all checks skipped, CLEAR plus green), and a reviewer with no VERDICT line.
 
-One end-to-end test (`test/e2e.test.ts`) starts a real herdr server in an isolated named session, creates a workspace, registers a lead pane, and starts a lane whose agent is `test/fixtures/fake-agent.sh` in place of omo. The script reads its brief, calls `dori report` and `dori ready`, and the test checks that `[START]`, `[REPORT]` and `[READY]` arrive in the lead pane and that `dori done` closes the lane. It is skipped when `herdr` is not on PATH. `bun run typecheck` runs `tsc --noEmit`.
+Nine more unit tests (`test/loop.test.ts`) run the hourly loop on the same fake: backlog add, decide, drop and import; start order and budget; holds for full lanes, a busy host and open questions; sync of done, lost and merged lanes; the missed-work audit; one ask and one reminder per question; the kill switch and the lock; and a failed lane start. Two of them check that a run never sends a pane close, a merge or a push, and the audit test also checks that lane records stay byte-identical.
+
+Two end-to-end tests (`test/e2e.test.ts`). The first starts a real herdr server in an isolated named session, creates a workspace, registers a lead pane, and starts a lane whose agent is `test/fixtures/fake-agent.sh` in place of omo. The script reads its brief, calls `dori report` and `dori ready`, and the test checks that `[START]`, `[REPORT]` and `[READY]` arrive in the lead pane and that `dori done` closes the lane. The second adds a backlog item, runs `dori loop --once`, and checks that the lane it starts reaches READY, that `[LOOP ...]` reaches the lead pane, and that `dori loop stop` makes the next run do nothing. Both are skipped when `herdr` is not on PATH. `bun run typecheck` runs `tsc --noEmit`.
 
 Dori mode has its own 68 tests, against fake herdr, git and gh:
 

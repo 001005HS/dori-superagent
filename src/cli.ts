@@ -5,17 +5,24 @@ import {
   defaultDeps, done, dutyTick, mergeGate, ready, Refusal, report, review, send, startLane, ROLES, type Deps,
 } from "./harness.ts";
 import { shq } from "./herdr.ts";
+import { backlogAdd, backlogDecide, backlogDrop, backlogImport, loopTick, msUntilNext, summary, HOUR } from "./loop.ts";
 import type { Role } from "./store.ts";
 
 const USAGE = `dori - a proactive multi-session harness on herdr + omo
 
-  dori up [--cwd DIR]                         open lead + duty panes in a new herdr workspace
+  dori up [--cwd DIR]                         open lead, duty, duty loop and hourly loop panes
   dori role <lead|duty> [PANE]                register a pane as lead or duty (default: this pane)
   dori start <key> --brief FILE [--cwd DIR]   open a lane: new tab, omo session, brief + lane rules
   dori report <key> --text T [--status working|waiting]
   dori ready <key> --text T --evidence LINK [--evidence LINK ...]
   dori send <lead|duty|key|pane> --text T     deliver now, or queue until the pane is idle
   dori duty [--once] [--interval SECONDS]     flush inboxes, nudge idle lanes, escalate, detect lost lanes
+  dori loop [--once] [--interval S] [--max-lanes N] [--max-starts N] [--max-load L] [--force]
+                                              hourly: sync backlog, audit missed work, start the next item, ask decisions
+  dori loop stop [--text WHY] | resume | status   kill switch and last run
+  dori backlog add <id> --brief FILE [--title T] [--priority 1-9] [--cwd DIR] [--decision Q]
+  dori backlog list | decide <id> --text ANSWER | drop <id> [--text WHY]
+  dori backlog import <owner/repo> [--label dori] [--cwd DIR]   open labelled issues -> items
   dori review <owner/repo#N> [--model M]      fresh omo reviewer at the exact head -> receipt
   dori merge <owner/repo#N> [--dry-run]       CLEAR receipt at head + green checks -> squash merge
   dori done <key>                             lead closes a READY lane
@@ -71,7 +78,9 @@ async function up(d: Deps, cwd: string): Promise<void> {
   d.store.setRole("duty", duty.paneId);
   const loop = await d.herdr.split(duty.paneId, cwd, env);
   await d.herdr.run(loop.paneId, `${d.doriCmd} duty --interval 60`);
-  console.log(`UP lead=${lead.paneId} duty=${duty.paneId} loop=${loop.paneId} home=${d.store.root}`);
+  const hourly = await d.herdr.split(loop.paneId, cwd, { ...env, HERDR_WORKSPACE_ID: lead.workspaceId });
+  await d.herdr.run(hourly.paneId, `${d.doriCmd} loop`);
+  console.log(`UP lead=${lead.paneId} duty=${duty.paneId} loop=${loop.paneId} hourly=${hourly.paneId} home=${d.store.root}`);
 }
 
 function status(d: Deps): void {
@@ -127,6 +136,76 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
         if (one(a, "once")) break;
         await Bun.sleep(interval);
       } while (true);
+      return 0;
+    }
+    case "loop": {
+      if (x === "stop") {
+        d.store.setStop(d.now(), one(a, "text") ?? "stopped by hand");
+        console.log("LOOP STOPPED");
+        return 0;
+      }
+      if (x === "resume") {
+        d.store.clearStop();
+        console.log("LOOP RESUMED");
+        return 0;
+      }
+      if (x === "status") {
+        const stop = d.store.stop();
+        const last = d.store.lastRun();
+        console.log(stop ? `stopped: ${stop.reason}` : "running (no stop file)");
+        console.log(last ? summary(last) : "no run yet");
+        return 0;
+      }
+      if (x !== undefined) throw new Refusal(`unknown loop command ${x}\n\n${USAGE}`);
+      const interval = Number(one(a, "interval") ?? String(HOUR / 1000)) * 1000;
+      const opts = {
+        interval,
+        maxLanes: Number(one(a, "max-lanes") ?? process.env["DORI_MAX_LANES"] ?? "3"),
+        maxStarts: Number(one(a, "max-starts") ?? process.env["DORI_MAX_STARTS"] ?? "2"),
+        force: one(a, "force") === "true",
+        ...(one(a, "max-load") ?? process.env["DORI_MAX_LOAD"] ? { maxLoad: Number(one(a, "max-load") ?? process.env["DORI_MAX_LOAD"]) } : {}),
+      };
+      if (!(interval > 0) || !(opts.maxLanes >= 0) || !(opts.maxStarts >= 0) || !((opts.maxLoad ?? 1) > 0)) throw new Refusal("--interval, --max-lanes, --max-starts and --max-load must be positive numbers");
+      do {
+        try {
+          const run = await loopTick(d, opts);
+          console.log(run.skipped ? `LOOP skipped: ${run.skipped}` : `LOOP started=${run.started.length} findings=${run.findings.length} asked=${run.asked.length}`);
+        } catch (e) {
+          console.error(`LOOP ERROR ${e instanceof Error ? e.message : String(e)}`);
+        }
+        if (one(a, "once")) break;
+        opts.force = false;
+        await Bun.sleep(msUntilNext(d, interval));
+      } while (true);
+      return 0;
+    }
+    case "backlog": {
+      if (x === "add") {
+        const id = need(a.pos[2], "item id");
+        const p = one(a, "priority");
+        const item = backlogAdd(d, id, need(one(a, "brief"), "--brief"), {
+          title: one(a, "title"), cwd: one(a, "cwd"), decision: one(a, "decision"),
+          ...(p !== undefined ? { priority: Number(p) } : {}),
+        });
+        console.log(`ADDED ${item.id} p${item.priority}${item.decision ? " (needs decision)" : ""}`);
+      } else if (x === "list" || x === undefined) {
+        for (const i of d.store.items()) {
+          console.log(`${i.id.padEnd(24)} ${i.status.padEnd(8)} p${i.priority}  ${i.decision ? `DECIDE: ${i.decision}` : i.title}`);
+        }
+      } else if (x === "decide") {
+        const id = need(a.pos[2], "item id");
+        backlogDecide(d, id, await textOf(a));
+        console.log(`DECIDED ${id}`);
+      } else if (x === "drop") {
+        const id = need(a.pos[2], "item id");
+        backlogDrop(d, id, one(a, "text"));
+        console.log(`DROPPED ${id}`);
+      } else if (x === "import") {
+        const added = await backlogImport(d, need(a.pos[2], "owner/repo"), one(a, "label") ?? "dori", one(a, "cwd"));
+        console.log(`IMPORTED ${added.length}${added.length ? `: ${added.join(", ")}` : ""}`);
+      } else {
+        throw new Refusal(`unknown backlog command ${x}\n\n${USAGE}`);
+      }
       return 0;
     }
     case "review": {

@@ -1,10 +1,11 @@
 import { readFileSync } from "node:fs";
+import { cpus, freemem, loadavg, totalmem } from "node:os";
 import { join, resolve } from "node:path";
 import { Herdr, shq, spawnExec, type AgentStatus, type Exec } from "./herdr.ts";
-import { Store, type Lane, type Role } from "./store.ts";
+import { Store, type HostLoad, type Lane, type Role } from "./store.ts";
 
 export const NUDGE_MINUTES = [10, 20, 40] as const;
-const KEY_RE = /^[a-z][a-z0-9-]{1,40}$/;
+export const KEY_RE = /^[a-z][a-z0-9-]{1,40}$/;
 const PROMPTS = join(import.meta.dir, "..", "prompts");
 const CLI = resolve(import.meta.dir, "cli.ts");
 
@@ -15,6 +16,7 @@ export type Deps = {
   readonly now: () => number;
   readonly agentCmd: string;
   readonly doriCmd: string;
+  readonly host: () => HostLoad;
 };
 
 export const defaultDeps = (): Deps => {
@@ -26,6 +28,7 @@ export const defaultDeps = (): Deps => {
     now: Date.now,
     agentCmd: process.env["DORI_AGENT_CMD"] ?? "omo",
     doriCmd: process.env["DORI_CMD"] ?? `DORI_HOME=${shq(store.root)} bun ${shq(CLI)}`,
+    host: () => ({ load1: loadavg()[0] ?? 0, cores: cpus().length, memFreePct: Math.round((freemem() / totalmem()) * 100) }),
   };
 };
 
@@ -74,7 +77,7 @@ export async function flushInbox(d: Deps, paneId: string): Promise<boolean> {
   return true;
 }
 
-async function tellLead(d: Deps, text: string, from: string): Promise<void> {
+export async function tellLead(d: Deps, text: string, from: string): Promise<void> {
   if (!d.store.roles().lead) {
     process.stderr.write(`dori: no lead pane registered; message kept only in the lane log\n`);
     return;
@@ -92,7 +95,7 @@ export async function startLane(
 ): Promise<Lane> {
   if (!KEY_RE.test(key)) throw new Refusal(`lane key must match ${KEY_RE}`);
   const existing = d.store.lane(key);
-  if (existing && existing.status !== "done") throw new Refusal(`lane ${key} is already open in ${existing.paneId}`);
+  if (existing && existing.status !== "done" && existing.status !== "lost") throw new Refusal(`lane ${key} is already open in ${existing.paneId}`);
   const cwd = resolve(opts.cwd ?? process.cwd());
   const briefPath = d.store.briefPath(key);
   const footer = prompt("lane-footer.md", { key, dori: d.doriCmd });
