@@ -18,9 +18,10 @@ export class World {
   dutyCounts: DutyCounts[] = [];
   touches = 0;
   recorder: Usage = {
-    touch: async () => { this.touches++; },
-    record: async (e) => { this.usage.push(e); },
-    duty: async (c) => { this.dutyCounts.push(c); },
+    touch: () => { this.touches++; },
+    record: (e) => { this.usage.push(e); },
+    duty: (c) => { this.dutyCounts.push(c); },
+    flush: async () => {},
   };
   reviewer: (argv: readonly string[]) => { code: number; stdout: string } = () => ({ code: 0, stdout: "VERDICT: CLEAR" });
 

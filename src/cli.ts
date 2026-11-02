@@ -89,7 +89,7 @@ function status(d: Deps): void {
 export async function main(argv: readonly string[], d: Deps = defaultDeps()): Promise<number> {
   const a = parse(argv);
   const [cmd, x] = a.pos;
-  if (cmd !== undefined && COMMANDS.has(cmd)) await d.usage.touch();
+  if (cmd !== undefined && COMMANDS.has(cmd)) d.usage.touch();
   switch (cmd) {
     case "up":
       await up(d, resolve(one(a, "cwd") ?? process.cwd()));
@@ -154,10 +154,15 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
 }
 
 if (import.meta.main) {
+  const deps = defaultDeps();
+  let code = 0;
   try {
-    process.exit(await main(process.argv.slice(2)));
+    code = await main(process.argv.slice(2), deps);
   } catch (e) {
-    if (e instanceof Refusal) { console.error(e.message); process.exit(2); }
-    throw e;
+    if (!(e instanceof Refusal)) throw e;
+    console.error(e.message);
+    code = 2;
   }
+  await deps.usage.flush(2000);
+  process.exit(code);
 }

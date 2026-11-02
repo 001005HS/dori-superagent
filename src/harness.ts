@@ -118,7 +118,7 @@ export async function startLane(
   d.store.saveLane(lane);
   await tellLead(d, `[START ${key}] lane opened in ${pane.paneId}`, key);
   const open = d.store.lanes().filter((l) => l.status === "working" || l.status === "waiting").length;
-  await d.usage.record({ name: "dori.lane_started", open_lanes: Math.min(open, 1000) });
+  d.usage.record({ name: "dori.lane_started", open_lanes: Math.min(open, 1000) });
   return lane;
 }
 
@@ -151,7 +151,7 @@ export async function ready(d: Deps, key: string, text: string, evidence: readon
   lane.log.push({ at: now, kind: "ready", text });
   d.store.saveLane(lane);
   await tellLead(d, `[READY ${key}] ${text}\nevidence: ${evidence.join(" ")}`, key);
-  await d.usage.record({
+  d.usage.record({
     name: "dori.lane_ready",
     evidence_count: Math.min(evidence.length, 100),
     lane_minutes: Math.min(Math.floor((now - lane.createdAt) / 60_000), 10_080),
@@ -218,7 +218,7 @@ export async function dutyTick(d: Deps): Promise<DutyEvent[]> {
     }
   }
   const count = (pred: (a: string) => boolean) => events.filter((e) => pred(e.action)).length;
-  await d.usage.duty({
+  d.usage.duty({
     ticks: 1,
     flushed: count((a) => a === "flushed"),
     nudges: count((a) => a.startsWith("nudge-")),
@@ -262,7 +262,7 @@ export async function review(d: Deps, prId: string, model?: string): Promise<{ v
   if (!last) throw new Error("reviewer printed no VERDICT line; no receipt written");
   const verdict = last[1] as "CLEAR" | "BLOCK";
   d.store.saveReceipt({ pr: pr.id, sha, verdict, model: model ?? "default", at: d.now(), summary: res.stdout.trim().slice(-4000) });
-  await d.usage.record({ name: "dori.review_completed", verdict });
+  d.usage.record({ name: "dori.review_completed", verdict });
   return { verdict, sha };
 }
 
@@ -274,12 +274,12 @@ export async function mergeGate(d: Deps, prId: string, opts: { dryRun?: boolean 
   const sha = await headSha(d, pr);
   const refused = await gateRefusal(d, pr, sha);
   if (refused) {
-    if (!opts.dryRun) await d.usage.record({ name: "dori.merge_decided", outcome: refused[0] });
+    if (!opts.dryRun) d.usage.record({ name: "dori.merge_decided", outcome: refused[0] });
     throw new Refusal(`MERGE_REFUSED ${refused[1]}`);
   }
   if (opts.dryRun) return `MERGE_OK ${pr.id} head=${sha} (dry run)`;
   await gh(d, ["pr", "merge", String(pr.number), "--repo", pr.repo, "--squash", "--match-head-commit", sha]);
-  await d.usage.record({ name: "dori.merge_decided", outcome: "merged" });
+  d.usage.record({ name: "dori.merge_decided", outcome: "merged" });
   return `MERGED ${pr.id} head=${sha}`;
 }
 
