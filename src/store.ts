@@ -45,6 +45,7 @@ export type Item = {
   askedAt?: number;
   remindedAt?: number;
   attempts: number;
+  startFailures?: number;
   source?: string;
   createdAt: number;
   updatedAt: number;

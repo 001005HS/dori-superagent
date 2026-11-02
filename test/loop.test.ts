@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { done, dutyTick, ready, Refusal, report, startLane } from "../src/harness.ts";
+import { done, dutyTick, memFreePct, ready, Refusal, report, startLane } from "../src/harness.ts";
 import { backlogAdd, backlogDecide, backlogDrop, backlogImport, HOUR, importId, loopTick, msUntilNext, restore } from "../src/loop.ts";
 import type { Exec } from "../src/herdr.ts";
 import { World } from "./fake.ts";
@@ -255,7 +255,7 @@ describe("hourly loop", () => {
       expect.stringContaining("start three failed: herdr tab create"),
     ]);
     expect(run.held).toEqual(["1 item(s) waiting: 3 free of 3 lanes, max 2/run"]);
-    expect(failing.d.store.item("one")).toMatchObject({ status: "open", attempts: 1 });
+    expect(failing.d.store.item("one")).toMatchObject({ status: "open", attempts: 0, startFailures: 1 });
     expect(failing.d.store.lastRun()!.at).toBe(run.at);
     expect(readdirSync(join(failing.d.store.root, "loop"))).not.toContain("lock");
 
@@ -367,6 +367,30 @@ describe("hardening", () => {
     restore(aside, path);
     expect(readFileSync(path, "utf8")).toContain("moved");
     expect(readdirSync(join(d.store.root, "loop")).filter((f) => f.includes(".release."))).toEqual([]);
+  });
+
+  test("lost lanes and failed starts are counted apart, so a question never states a mixed count", async () => {
+    const { w, d, add } = setup();
+    add("mixed");
+    await loopTick(d, { force: true });
+    const lane = d.store.lane("mixed")!;
+    lane.status = "lost";
+    d.store.saveLane(lane);
+    rmSync(d.store.item("mixed")!.brief);
+    w.clock += HOUR;
+    const run = await loopTick(d);
+    expect(run.synced[0]).toBe("mixed reopened (lane lost, attempt 1)");
+    expect(run.findings[0]).toStartWith("start mixed failed");
+    expect(d.store.item("mixed")).toMatchObject({ attempts: 1, startFailures: 1 });
+    expect(d.store.item("mixed")!.decision).toBeUndefined();
+  });
+
+  test("macOS memory uses the kernel's available level, not free pages; Linux and a broken sysctl fall back to freemem", () => {
+    const free = () => 3;
+    expect(memFreePct("darwin", () => "72\n", free)).toBe(72);
+    expect(memFreePct("linux", () => { throw new Error("must not be called on linux"); }, free)).toBe(3);
+    expect(memFreePct("darwin", () => { throw new Error("no sysctl"); }, free)).toBe(3);
+    expect(memFreePct("darwin", () => "garbage", free)).toBe(3);
   });
 
   test("two runs in the same millisecond keep two records", async () => {

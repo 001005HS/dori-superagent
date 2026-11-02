@@ -71,6 +71,7 @@ export function backlogDecide(d: Deps, id: string, answer: string): void {
   delete item.askedAt;
   delete item.remindedAt;
   item.attempts = 0;
+  item.startFailures = 0;
   log(d, item, "decide", answer);
 }
 
@@ -336,8 +337,8 @@ async function pull(d: Deps, run: LoopRun, maxLanes: number, maxStarts: number, 
       const why = e instanceof Error ? e.message : String(e);
       const lane = d.store.lane(item.id);
       if (!lane || !isOpenLane(lane.status) || lane.createdAt < run.at) {
-        item.attempts += 1;
-        if (item.attempts >= MAX_ATTEMPTS) item.decision = `lane start failed ${item.attempts} times (${why.slice(0, 120)}); fix the brief or cwd, or drop?`;
+        item.startFailures = (item.startFailures ?? 0) + 1;
+        if (item.startFailures >= MAX_ATTEMPTS) item.decision = `lane start failed ${item.startFailures} times (${why.slice(0, 120)}); fix the brief or cwd, or drop?`;
         log(d, item, "start", `failed: ${why}`);
         run.findings.push(`start ${item.id} failed: ${why}`);
         continue;
