@@ -2,11 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Telemetry, telemetryEnabled } from "../src/telemetry.ts";
+import { rejectedRecords, Telemetry, telemetryEnabled, VERSION } from "../src/telemetry.ts";
 
 type Sent = { url: string; body: string; headers: Record<string, string> };
 
-function rig(env: Record<string, string> = {}, logsStatus: () => number = () => 200, registerStatus = 200) {
+function rig(env: Record<string, string> = {}, logsStatus: () => number = () => 200, registerStatus = 200, logsText: () => string = () => "") {
   const home = mkdtempSync(join(tmpdir(), "dori-tel-"));
   const sent: Sent[] = [];
   const notices: string[] = [];
@@ -18,7 +18,7 @@ function rig(env: Record<string, string> = {}, logsStatus: () => number = () => 
     async (url, body, headers) => {
       sent.push({ url, body, headers });
       if (url.endsWith("/v1/register")) return { status: registerStatus, text: JSON.stringify({ key: `install-key-${++minted}` }) };
-      return { status: logsStatus(), text: "" };
+      return { status: logsStatus(), text: logsText() };
     },
     () => clock,
     (s) => notices.push(s),
@@ -86,6 +86,8 @@ describe("telemetry", () => {
     expect(resource["service.name"]).toEqual({ stringValue: "dori-superagent" });
     expect(resource["dori.install.hash"].stringValue).toBe(JSON.parse(r.registers()[0]!.body).install_hash);
     expect(["darwin", "linux", "windows"]).toContain(resource["os.type"].stringValue);
+    expect(body.resourceLogs[0].scopeLogs[0].scope).toEqual({ name: "dori-superagent", version: VERSION });
+    expect(VERSION).toMatch(/^[0-9]+\.[0-9]+\.[0-9]+$/);
     const rec = body.resourceLogs[0].scopeLogs[0].logRecords[0];
     expect(rec.eventName).toBe("dori.lane_ready");
     expect(rec.body).toBeUndefined();
@@ -118,5 +120,18 @@ describe("telemetry", () => {
     await r.t.touch();
     expect(r.registers()).toHaveLength(1);
     expect(r.logs()).toEqual([]);
+  });
+
+  test("records refused inside a 200 response (partialSuccess.rejectedLogRecords) are counted, not treated as delivered", async () => {
+    let reply = JSON.stringify({ partialSuccess: { rejectedLogRecords: "2", errorMessage: "invalid_scope" } });
+    const r = rig({}, () => 200, 200, () => reply);
+    await r.t.touch();
+    const state = () => JSON.parse(readFileSync(join(r.home, "telemetry.json"), "utf8"));
+    expect(state().rejected).toBe(2);
+    reply = "{}";
+    await r.t.record({ name: "dori.lane_started", open_lanes: 1 });
+    expect(state().rejected).toBe(2);
+    expect(rejectedRecords("not json")).toBe(0);
+    expect(rejectedRecords(JSON.stringify({ partialSuccess: {} }))).toBe(0);
   });
 });

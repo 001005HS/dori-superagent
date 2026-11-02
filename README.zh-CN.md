@@ -178,11 +178,11 @@ dori 和 omo 用同一种方式发送匿名的使用计数：OTLP/HTTP JSON 日�
 
 ## 测试
 
-在仓库根目录跑 `bun test ./test/`，执行 harness 的 15 个测试，不调用任何模型。直接跑 `bun test` 会把 Dori 模式的测试也带上。
+在仓库根目录跑 `bun test ./test/`，执行 harness 的 16 个测试，不调用任何模型。直接跑 `bun test` 会把 Dori 模式的测试也带上。
 
 8 个 harness 单元测试（`test/harness.test.ts`）跑在一个假 herdr（`test/fake.ts`）上：它是一个录制器，顶替 `herdr` 和 `gh` 二进制，持有若干 Agent 状态可设置的窗格，还带一个由测试拨动的时钟。覆盖的场景有：lane 启动与 READY，lead 忙碌时的排队与成批送达，拒绝未知目标，10 和 20 分钟的催促、40 分钟的上报以及 WAITING 的 lane 不被打扰，working 和 lost 状态，合并门禁的每一个分支（没有回执、BLOCK、空检查列表、一项红色检查、全部跳过、CLEAR 加全绿），以及一个没有 VERDICT 行的评审者。
 
-6 个遥测单元测试（`test/telemetry.test.ts`）覆盖：关闭开关；首次提示和每天一次的 `dori.daily_active`；每次安装只签发一次、缓存起来、401 之后重新签发的 key；与注册的 schema 相符的载荷（只有允许的资源键，只有计数）；每小时一次的 duty 汇总；以及收集端不可达或注册被拒时从不抛出异常，也不发送任何日志。
+7 个遥测单元测试（`test/telemetry.test.ts`）覆盖：关闭开关；首次提示和每天一次的 `dori.daily_active`；每次安装只签发一次、缓存起来、401 之后重新签发的 key；与注册的 schema 相符的载荷（scope 名称和版本，只有允许的资源键，只有计数）；收集端在 200 响应里拒收的记录（`partialSuccess.rejectedLogRecords`）会被计数；每小时一次的 duty 汇总；以及收集端不可达或注册被拒时从不抛出异常，也不发送任何日志。
 
 1 个端到端测试（`test/e2e.test.ts`）在隔离的具名会话里起一个真实的 herdr 服务器，创建工作区，注册 lead 窗格，再启动一条 lane，其 Agent 用 `test/fixtures/fake-agent.sh` 顶替 omo。脚本读取 brief，调用 `dori report` 和 `dori ready`；测试检查 `[START]`、`[REPORT]`、`[READY]` 是否到达 lead 窗格，以及 `dori done` 是否关掉了这条 lane。PATH 上没有 `herdr` 时它会被跳过，运行时带着 `DORI_TELEMETRY=0`。`bun run typecheck` 执行 `tsc --noEmit`。
 

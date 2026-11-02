@@ -40,6 +40,7 @@ export const telemetryEnabled = (env: NodeJS.ProcessEnv): boolean => !isOff(env[
 type State = {
   installId: string;
   key?: string;
+  rejected?: number;
   noticeShown?: boolean;
   lastActiveDay?: string;
   duty?: DutyCounts & { since: number };
@@ -130,6 +131,12 @@ export class Telemetry implements Usage {
       if (res.status === 401 && state.key !== undefined) {
         state.key = undefined;
         this.save(state);
+        return;
+      }
+      const rejected = rejectedRecords(res.text);
+      if (rejected > 0) {
+        state.rejected = (state.rejected ?? 0) + rejected;
+        this.save(state);
       }
     } catch {
       // best effort by design: a failed or slow send never changes what the command does
@@ -147,6 +154,16 @@ export class Telemetry implements Usage {
     state.key = key;
     this.save(state);
     return key;
+  }
+}
+
+// The collector answers 200 even when it refuses records; the refusal count is in partialSuccess.
+export function rejectedRecords(text: string): number {
+  try {
+    const n = Number((JSON.parse(text) as { partialSuccess?: { rejectedLogRecords?: unknown } }).partialSuccess?.rejectedLogRecords ?? 0);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  } catch {
+    return 0;
   }
 }
 
