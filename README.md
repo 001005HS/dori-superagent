@@ -65,7 +65,7 @@ A lane is one omo session in its own herdr tab, started with one brief and the l
 
 The duty loop is `dori duty --interval 60`, a plain process in a pane next to a duty omo session. Each tick it flushes queued messages into panes that have gone idle, nudges lanes that have been silent, escalates to the lead, and marks a lane whose pane vanished as lost.
 
-State is JSON on disk under `~/.dori` (or `$DORI_HOME`): `lanes/`, `inbox/`, `briefs/`, `receipts/`, plus `backlog/` and `loop/` for the hourly loop. The only long-running processes the harness adds are the duty loop and the hourly loop, and the only runtime dependency is Bun.
+State is JSON on disk under `~/.dori` (or `$DORI_HOME`): `lanes/`, `inbox/`, `briefs/`, `receipts/`, plus `backlog/` and `loop/` for the hourly loop. Besides the agent sessions, the only long-running processes the harness adds are the duty loop and the hourly loop, and the only runtime dependency is Bun.
 
 ![lane lifecycle](docs/lane-flow.png)
 
@@ -159,7 +159,7 @@ dori backlog import owner/repo --label dori     # label p1..p9 sets the priority
 dori backlog list
 ```
 
-A run first checks its gate: it does nothing while the loop is stopped, while another loop holds the lock, or when the last run was less than an hour ago. A run that passes the gate does five things, in order:
+A run first checks its gate: it does nothing while the loop is stopped, while another loop holds the lock, or when the last run was less than an interval ago (one hour by default; `--force` skips this check). A run that passes the gate does five things, in order:
 
 1. Sync. An item whose lane is done, or whose READY PR has merged, becomes done. An item whose lane was lost goes back to the queue, and after two losses it turns into a question. An imported item whose issue was closed is dropped.
 2. Missed-work audit. A lane with no report for 3 hours, a READY lane nobody closed for 2 hours, a lane whose pane vanished.
@@ -187,11 +187,11 @@ A minimal experiment. The harness is about 1,300 lines of TypeScript on Bun with
 
 ## Tests
 
-`bun test ./test/` at the repo root runs the harness's 24 tests and calls no model. Plain `bun test` would also pick up the Dori mode tests.
+`bun test ./test/` at the repo root runs the harness's 25 tests and calls no model. Plain `bun test` would also pick up the Dori mode tests.
 
 Eight unit tests (`test/harness.test.ts`) run against a fake herdr (`test/fake.ts`): a recorder that stands in for the `herdr` and `gh` binaries, holds panes with a settable agent status, and has a clock the tests move. They cover lane start and READY, the queue-and-batch behaviour of a busy lead, refused unknown targets, nudges at 10 and 20 with escalation at 40 and WAITING lanes left alone, the working and lost states, every branch of the merge gate (no receipt, BLOCK, empty check list, a red check, all checks skipped, CLEAR plus green), and a reviewer with no VERDICT line.
 
-Fourteen more unit tests (`test/loop.test.ts`) run the hourly loop on the same fake: backlog add, decide, drop and import; start order and budget; holds for full lanes, a busy host and open questions; sync of done, lost and merged lanes; the missed-work audit; one ask and one reminder per question; the kill switch, a live, dead or corrupt lock, and a lock lost mid-run; a failed lane start and a lane that opened but could not tell the lead; ids that try to leave the backlog directory; a vanished lane record; and two runs in the same millisecond. Two of them check that a run never sends a pane close, a merge or a push, and the audit test also checks that lane records stay byte-identical.
+Fifteen more unit tests (`test/loop.test.ts`) run the hourly loop on the same fake: backlog add, decide, drop and import; start order and budget; holds for full lanes, a busy host and open questions; sync of done, lost and merged lanes; the missed-work audit; one ask and one reminder per question; the kill switch, a live, dead or corrupt lock, a lock lost mid-run, and a moved lock that cannot be put back; a failed lane start and a lane that opened but could not tell the lead; ids that try to leave the backlog directory; a vanished lane record; and two runs in the same millisecond. Two of them check that a run never sends a pane close, a merge or a push, and the audit test also checks that lane records stay byte-identical.
 
 Two end-to-end tests (`test/e2e.test.ts`). The first starts a real herdr server in an isolated named session, creates a workspace, registers a lead pane, and starts a lane whose agent is `test/fixtures/fake-agent.sh` in place of omo. The script reads its brief, calls `dori report` and `dori ready`, and the test checks that `[START]`, `[REPORT]` and `[READY]` arrive in the lead pane and that `dori done` closes the lane. The second adds a backlog item, runs `dori loop --once`, and checks that the lane it starts reaches READY, that `[LOOP ...]` reaches the lead pane, and that `dori loop stop` makes the next run do nothing. Both are skipped when `herdr` is not on PATH. `bun run typecheck` runs `tsc --noEmit`.
 

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { done, dutyTick, ready, Refusal, report, startLane } from "../src/harness.ts";
-import { backlogAdd, backlogDecide, backlogDrop, backlogImport, HOUR, importId, loopTick } from "../src/loop.ts";
+import { backlogAdd, backlogDecide, backlogDrop, backlogImport, HOUR, importId, loopTick, restore } from "../src/loop.ts";
 import type { Exec } from "../src/herdr.ts";
 import { World } from "./fake.ts";
 
@@ -91,6 +91,9 @@ describe("hourly loop", () => {
     w.clock += 10 * 60_000;
     const again = await loopTick(d);
     expect(again.skipped).toBe("ran 10m ago");
+    w.clock += 50 * 60_000 - 1000;
+    expect((await loopTick(d)).skipped).toBe("ran 59m ago");
+    w.clock -= 50 * 60_000 - 1000;
     expect(d.store.runs()).toHaveLength(1);
 
     const forced = await loopTick(d, { force: true, maxLanes: 3 });
@@ -313,6 +316,21 @@ describe("hardening", () => {
     expect(run.started).toEqual(["first (p5)"]);
     expect(run.held).toContain("lock lost to another loop; no more starts this run");
     expect(readFileSync(d.store.loopPath("lock"), "utf8")).toContain("usurper");
+  });
+
+  test("a moved lock that cannot be put back because a newer one exists is left aside, never deleted", () => {
+    const { d } = setup();
+    const path = d.store.loopPath("lock");
+    const aside = `${path}.release.x`;
+    writeFileSync(aside, JSON.stringify({ pid: 1, at: 0, nonce: "moved" }));
+    writeFileSync(path, JSON.stringify({ pid: 2, at: 0, nonce: "newer" }));
+    restore(aside, path);
+    expect(readFileSync(path, "utf8")).toContain("newer");
+    expect(readFileSync(aside, "utf8")).toContain("moved");
+    rmSync(path);
+    restore(aside, path);
+    expect(readFileSync(path, "utf8")).toContain("moved");
+    expect(readdirSync(join(d.store.root, "loop")).filter((f) => f.includes(".release."))).toEqual([]);
   });
 
   test("two runs in the same millisecond keep two records", async () => {

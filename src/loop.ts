@@ -13,7 +13,6 @@ export const READY_HOURS = 2;
 export const REMIND_HOURS = 6;
 export const MAX_ATTEMPTS = 2;
 export const MEM_FREE_MIN_PCT = 10;
-const GRACE_MS = 60_000;
 
 export type LoopOpts = { interval?: number; maxLanes?: number; maxStarts?: number; maxLoad?: number; force?: boolean };
 
@@ -185,8 +184,7 @@ function acquire(d: Deps): { nonce: string } | { holder: string } {
         throw e;
       }
       if (!sameLock(readLock(aside), seen)) {
-        try { linkSync(aside, path); } catch { /* another process holds a newer lock; it stays */ }
-        rmSync(aside, { force: true });
+        restore(aside, path);
         return { holder: "lock changed hands during takeover" };
       }
       rmSync(aside, { force: true });
@@ -212,8 +210,17 @@ function release(d: Deps, nonce: string): void {
     throw e;
   }
   const moved = readLock(aside);
-  if (typeof moved === "string" || moved.nonce !== nonce) {
-    try { linkSync(aside, path); } catch { /* a newer lock exists; leave it */ }
+  if (typeof moved === "string" || moved.nonce !== nonce) restore(aside, path);
+  else rmSync(aside, { force: true });
+}
+
+/** Puts a lock that was moved by mistake back. If a newer lock took its place, the moved one is left aside, never deleted. */
+export function restore(aside: string, path: string): void {
+  try {
+    linkSync(aside, path);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "EEXIST") return;
+    throw e;
   }
   rmSync(aside, { force: true });
 }
@@ -386,7 +393,7 @@ export async function loopTick(d: Deps, opts: LoopOpts = {}): Promise<LoopRun> {
   if ("holder" in lock) return { at: d.now(), skipped: lock.holder, ...empty };
   try {
     const last = d.store.lastRun();
-    if (last && !opts.force && d.now() - last.at < interval - GRACE_MS) {
+    if (last && !opts.force && d.now() - last.at < interval) {
       return { at: d.now(), skipped: `ran ${Math.floor((d.now() - last.at) / 60_000)}m ago`, ...empty };
     }
     const run: LoopRun = { at: d.now(), synced: [], findings: [], started: [], held: [], asked: [] };

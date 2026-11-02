@@ -10,7 +10,7 @@ An item that needs a person carries a `decision` (the question). While it is set
 
 ## One run, in order
 
-0. Gate. A stop file means do nothing at all. A live lock held by another process means skip; a lock whose process is dead, or that is unreadable, is taken over. A run less than an interval ago means skip, unless `--force`. A skipped run writes no record.
+0. Gate. A stop file means do nothing at all. A live lock held by another process means skip; a lock whose process is dead, or whose contents are corrupt, is taken over. A run less than an interval (default one hour) after the last one means skip, unless `--force`. A skipped run writes no record.
 1. Sync. A running item whose lane is done becomes done. One whose lane was lost, or whose lane record is missing, goes back to open with one more attempt, and after 2 such attempts it gets a decision ("retry, re-brief or drop?"). One whose lane is READY with a merged PR becomes done. An open item imported from an issue that is now closed is dropped.
 2. Audit. Read-only checks: a working or waiting lane whose last start or report is 3 hours old (the duty loop polling a busy pane does not count as a report), a READY lane not closed after 2 hours, a lane whose pane is gone.
 3. Pull. Free slots = `--max-lanes` (default 3) minus open lanes, and at most `--max-starts` (default 2) per run. Nothing starts when the 1-minute load is above the core count (or `--max-load`) or free memory is under 10%. Candidates are open items with no decision, ordered by priority (1 first), then age, then id.

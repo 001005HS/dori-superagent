@@ -63,7 +63,7 @@ lead 是唯一和你对话的会话。它把你的请求写成 brief，用 `dori
 
 duty 循环是 `dori duty --interval 60`，一个普通进程，跑在 duty omo 会话旁边的窗格里。每一轮它把排队的消息送进已经空闲的窗格，催一下沉默太久的 lane，向 lead 上报，并把窗格已经消失的 lane 标记为 lost。
 
-状态是 `~/.dori`（或 `$DORI_HOME`）下的 JSON 文件：`lanes/`、`inbox/`、`briefs/`、`receipts/`，以及每小时循环用的 `backlog/` 和 `loop/`。harness 新增的常驻进程只有 duty 循环和每小时循环两个，运行时依赖只有 Bun 一个。
+状态是 `~/.dori`（或 `$DORI_HOME`）下的 JSON 文件：`lanes/`、`inbox/`、`briefs/`、`receipts/`，以及每小时循环用的 `backlog/` 和 `loop/`。除了 Agent 会话，harness 新增的常驻进程只有 duty 循环和每小时循环两个，运行时依赖只有 Bun 一个。
 
 ![lane lifecycle](docs/lane-flow.png)
 
@@ -157,7 +157,7 @@ dori backlog import owner/repo --label dori     # p1..p9 标签设优先级，ne
 dori backlog list
 ```
 
-每一轮先过一道关：循环被停掉、另一个循环持有锁、或者距上一轮不到一小时，就什么也不做。过了这道关的一轮按顺序做五件事：
+每一轮先过一道关：循环被停掉、另一个循环持有锁、或者距上一轮不到一个间隔（默认一小时；`--force` 跳过这项检查），就什么也不做。过了这道关的一轮按顺序做五件事：
 
 1. 同步。lane 已结束、或 READY 的 PR 已合并的项目标为 done。lane 丢失的项目回到队列，丢失两次就变成一个问题。导入的 issue 已关闭的项目被移除。
 2. 漏办检查。3 小时没有汇报的 lane，READY 之后 2 小时没人关的 lane，窗格已经消失的 lane。
@@ -185,11 +185,11 @@ harness 和 Dori 模式都带一个叫 `dori` 的命令。一台机器只装其�
 
 ## 测试
 
-在仓库根目录跑 `bun test ./test/`，执行 harness 的 24 个测试，不调用任何模型。直接跑 `bun test` 会把 Dori 模式的测试也带上。
+在仓库根目录跑 `bun test ./test/`，执行 harness 的 25 个测试，不调用任何模型。直接跑 `bun test` 会把 Dori 模式的测试也带上。
 
 8 个单元测试（`test/harness.test.ts`）跑在一个假 herdr（`test/fake.ts`）上：它是一个录制器，顶替 `herdr` 和 `gh` 二进制，持有若干 Agent 状态可设置的窗格，还带一个由测试拨动的时钟。覆盖的场景有：lane 启动与 READY，lead 忙碌时的排队与成批送达，拒绝未知目标，10 和 20 分钟的催促、40 分钟的上报以及 WAITING 的 lane 不被打扰，working 和 lost 状态，合并门禁的每一个分支（没有回执、BLOCK、空检查列表、一项红色检查、全部跳过、CLEAR 加全绿），以及一个没有 VERDICT 行的评审者。
 
-另有 14 个单元测试（`test/loop.test.ts`）在同一个假 herdr 上跑每小时循环：待办的添加、决定、移除和导入，启动顺序与预算，lane 已满、主机繁忙和有待决问题时的暂缓，done、lost 和已合并 lane 的同步，漏办检查，每个问题只问一次、只提醒一次，急停开关，活着的、已死的和损坏的锁，运行中被抢走的锁，lane 启动失败，已经开出来却没能通知 lead 的 lane，试图跑出待办目录的 id，消失的 lane 记录，以及同一毫秒内的两轮。其中两个检查循环从不发出关窗格、合并或推送，漏办检查的测试还确认 lane 记录逐字节不变。
+另有 15 个单元测试（`test/loop.test.ts`）在同一个假 herdr 上跑每小时循环：待办的添加、决定、移除和导入，启动顺序与预算，lane 已满、主机繁忙和有待决问题时的暂缓，done、lost 和已合并 lane 的同步，漏办检查，每个问题只问一次、只提醒一次，急停开关，活着的、已死的和损坏的锁，运行中被抢走的锁，放不回去而留在一旁的锁，lane 启动失败，已经开出来却没能通知 lead 的 lane，试图跑出待办目录的 id，消失的 lane 记录，以及同一毫秒内的两轮。其中两个检查循环从不发出关窗格、合并或推送，漏办检查的测试还确认 lane 记录逐字节不变。
 
 2 个端到端测试（`test/e2e.test.ts`）。第一个在隔离的具名会话里起一个真实的 herdr 服务器，创建工作区，注册 lead 窗格，再启动一条 lane，其 Agent 用 `test/fixtures/fake-agent.sh` 顶替 omo。脚本读取 brief，调用 `dori report` 和 `dori ready`；测试检查 `[START]`、`[REPORT]`、`[READY]` 是否到达 lead 窗格，以及 `dori done` 是否关掉了这条 lane。第二个添加一个待办项目，运行 `dori loop --once`，检查循环启动的 lane 走到 READY、`[LOOP ...]` 到达 lead 窗格，以及 `dori loop stop` 之后的一轮什么也不做。PATH 上没有 `herdr` 时两者都会被跳过。`bun run typecheck` 执行 `tsc --noEmit`。
 
