@@ -92,6 +92,26 @@ test("a cwd that is not a git checkout raises no objection of its own", async ()
   expect(lines[0]).toStartWith("LANE_CLOSED demo-lane");
 });
 
+// The not-a-checkout skip is for the cwd fallback only: a worktree the lane owns whose git state cannot be read must
+// still block the close, as it did before #39 (#42).
+test("a lane-owned worktree whose git state is unreadable still blocks the close", async () => {
+  world.isGitRepo = "false";
+  await claimDone(at(T0), lane, "merged acme/app#1");
+  await watchTick(at(T0 + 6 * MIN));
+  expect((await at(T0).registry.read("demo-lane"))?.objection?.reasons).toEqual([`unpushed work in ${WT} (git state unreadable)`]);
+  expect(closedVia()).toHaveLength(0);
+});
+
+test("an unpushed commit in the cwd of a lane with no worktree blocks the close", async () => {
+  world.worktreeList = "worktree /repo\nbranch refs/heads/main";
+  world.dirty = "";
+  world.aheadCount = { "/repo": "2" };
+  await claimDone(at(T0), lane, "merged acme/app#1");
+  await watchTick(at(T0 + 6 * MIN));
+  expect((await at(T0).registry.read("demo-lane"))?.objection?.reasons).toEqual(["unpushed work in /repo"]);
+  expect(closedVia()).toHaveLength(0);
+});
+
 test("a Done signal that does not read back live becomes the objection", async () => {
   world.issueState = "OPEN";
   await claimDone(at(T0), lane, "merged acme/app#1");
