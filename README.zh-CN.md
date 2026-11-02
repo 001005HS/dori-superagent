@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="skills/dori-mode/assets/dori-avatar.png" alt="Dori" width="120">
+</p>
+
 # dori-superharness-exp
 
 一个主动式的多会话编码代理 harness，约 660 行 TypeScript，运行在 [herdr](https://github.com/herdrdev/herdr) 和 [omo](https://github.com/code-yeongyu/oh-my-openagent) 之上。
