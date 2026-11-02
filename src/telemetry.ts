@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { arch, platform, release } from "node:os";
 import { join } from "node:path";
 
@@ -84,13 +84,18 @@ export class Telemetry implements Usage {
     clearTimeout(timer);
   }
 
-  // The first write is exclusive, so two first runs racing each other end up on one install id.
+  // The first install id is written to a private temp file and claimed with link(), which fails rather than replaces
+  // when the file exists: racing first runs end up on one id, and no reader ever sees a half-written file.
   private load(): State {
     if (!existsSync(this.path)) {
+      const tmp = `${this.path}.${process.pid}.${randomBytes(4).toString("hex")}.new`;
+      writeFileSync(tmp, JSON.stringify({ installId: randomBytes(16).toString("hex") }) + "\n", { mode: 0o600 });
       try {
-        writeFileSync(this.path, JSON.stringify({ installId: randomBytes(16).toString("hex") }) + "\n", { mode: 0o600, flag: "wx" });
+        linkSync(tmp, this.path);
       } catch (e) {
         if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      } finally {
+        unlinkSync(tmp);
       }
     }
     return JSON.parse(readFileSync(this.path, "utf8")) as State;

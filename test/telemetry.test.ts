@@ -171,18 +171,15 @@ describe("telemetry", () => {
     expect(Date.now() - started).toBeLessThan(1000);
   });
 
-  test("two first runs racing on one home share a single install id", async () => {
+  test("first runs racing in separate processes on one home end up with a single install id", async () => {
     const home = mkdtempSync(join(tmpdir(), "dori-tel-"));
-    const hashes: string[] = [];
-    const sender = async (url: string, body: string) => {
-      if (url.endsWith("/v1/register")) hashes.push(JSON.parse(body).install_hash);
-      return { status: url.endsWith("/v1/register") ? 200 : 200, text: JSON.stringify({ key: "k" }) };
-    };
-    const a = new Telemetry(home, {}, sender, Date.now, () => {});
-    const b = new Telemetry(home, {}, sender, Date.now, () => {});
-    a.touch();
-    b.touch();
-    await Promise.all([a.flush(5000), b.flush(5000)]);
-    expect(new Set(hashes).size).toBe(1);
+    const script = `const { Telemetry } = await import(${JSON.stringify(join(import.meta.dir, "../src/telemetry.ts"))});
+      const hashes = [];
+      const t = new Telemetry(process.argv[1], {}, async (url, body) => { if (url.endsWith("/v1/logs")) hashes.push(JSON.parse(body).resourceLogs[0].resource.attributes.find((a) => a.key === "dori.install.hash").value.stringValue); return { status: 200, text: JSON.stringify({ key: "k" }) }; }, Date.now, () => {});
+      t.record({ name: "dori.lane_started", open_lanes: 1 }); await t.flush(5000); console.log(hashes[0] ?? "none");`;
+    const runs = Array.from({ length: 6 }, () => Bun.spawn(["bun", "-e", script, home], { stdout: "pipe", stderr: "pipe" }));
+    const outs = await Promise.all(runs.map(async (p) => { await p.exited; return (await new Response(p.stdout).text()).trim(); }));
+    expect(outs.every((o) => /^[0-9a-f]{64}$/.test(o))).toBe(true);
+    expect(new Set(outs).size).toBe(1);
   });
 });
