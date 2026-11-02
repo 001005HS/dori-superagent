@@ -2,7 +2,7 @@
   <img src="skills/dori-mode/assets/dori-avatar.png" alt="Dori" width="120">
 </p>
 
-# dori-superharness-exp
+# dori-superagent
 
 複数セッションのコーディングエージェントを能動的に回すハーネスです。TypeScript 約 660 行で、[herdr](https://github.com/herdrdev/herdr) と [omo](https://github.com/code-yeongyu/oh-my-openagent) の上で動きます。
 
@@ -18,7 +18,7 @@ DeepSeek が [dsh-superagent-prototype](https://github.com/deepseek-ai/dsh-super
 
 - 2026-04-18: omo にチームモードが入りました。ターミナルのペインごとにエージェントセッション一つ、それぞれに worktree 一つです（[f1268c0](https://github.com/code-yeongyu/oh-my-openagent/commit/f1268c0)、[e303fee](https://github.com/code-yeongyu/oh-my-openagent/commit/e303fee)）。
 - 2026-05-06: omo の README に Dori の名前が載りました（[#3807](https://github.com/code-yeongyu/oh-my-openagent/pull/3807)）。
-- 2026-10-07: このリポジトリが Dori モードを `omo-dori-mode-experimental` として公開しました（[ce53e4d](https://github.com/sisyphuslabs/dori-superharness-exp/commit/ce53e4d)）。一つのエージェントが仕事ごとに herdr タブへ専用のエージェントセッションを立てて任せ、仕事が終わってから初めて閉じます。git の履歴は公開されています。
+- 2026-10-07: このリポジトリが Dori モードを `omo-dori-mode-experimental` として公開しました（[ce53e4d](https://github.com/sisyphuslabs/dori-superagent/commit/ce53e4d)）。一つのエージェントが仕事ごとに herdr タブへ専用のエージェントセッションを立てて任せ、仕事が終わってから初めて閉じます。git の履歴は公開されています。
 - 2026-10-31: DeepSeek のプロトタイプに最初のコミット。
 - 2026-11-01 ごろ: DeepSeek の記事。
 
@@ -90,8 +90,8 @@ duty ループは `dori duty --interval 60` です。duty 用の omo セッシ�
 Bun 1.3 以上、herdr、omo、GitHub CLI の `gh`（PR の head SHA の取得、チェックの確認、マージに使います）が必要です。
 
 ```sh
-git clone https://github.com/sisyphuslabs/dori-superharness-exp
-cd dori-superharness-exp
+git clone https://github.com/sisyphuslabs/dori-superagent
+cd dori-superagent
 bun install
 bun link   # puts `dori` on your PATH; or write `bun src/cli.ts` wherever `dori` appears below
 ```
@@ -151,7 +151,7 @@ READY にはエビデンスが要ります。`dori ready` は、`--evidence` の
 Dori モードはメッセンジャーに面した側の半分で、2026-10-07 にこのリポジトリで公開しました。コーディングエージェントのセッション一つを、メッセンジャー越しに話しかける常駐エージェントに変えます。そのセッションは仕事ごとに herdr タブへ専用のエージェントセッションを立てて任せ、自分が立てたセッションをすべてレジストリに記録し、仕事が終わったと証明できてから初めて閉じます。証明になるのは、マージされた PR、クローズされた issue、公開されたバージョン、または自分で実行できるチェックです。スキル（`skills/dori-mode/SKILL.md` と `references/`）と、同じく `dori` という名前の独自の Bun + TypeScript CLI として配布しています。
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/sisyphuslabs/dori-superharness-exp/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/sisyphuslabs/dori-superagent/main/install.sh | bash
 ```
 
 このスクリプトは、このリポジトリを `~/.dori/src` にクローンし、スキルを `~/.agents/skills/dori-mode` にリンクし、`bun link` で Dori モードの `dori` を PATH に載せ、設定例を `~/.dori/config.json` にコピーします。コマンド、設定、ルーティング、done プロトコルは [`skills/dori-mode/SKILL.md`](skills/dori-mode/SKILL.md) と [`references/`](skills/dori-mode/references/) にあります。

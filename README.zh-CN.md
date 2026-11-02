@@ -2,7 +2,7 @@
   <img src="skills/dori-mode/assets/dori-avatar.png" alt="Dori" width="120">
 </p>
 
-# dori-superharness-exp
+# dori-superagent
 
 一个主动式、多会话的编程 Agent harness：约 660 行 TypeScript，跑在 [herdr](https://github.com/herdrdev/herdr) 和 [omo](https://github.com/code-yeongyu/oh-my-openagent) 之上。
 
@@ -18,7 +18,7 @@ DeepSeek 发布了 [dsh-superagent-prototype](https://github.com/deepseek-ai/dsh
 
 - 2026-04-18：团队模式合入 omo，多个 Agent 会话各占一个终端窗格，各带一个 worktree（[f1268c0](https://github.com/code-yeongyu/oh-my-openagent/commit/f1268c0)、[e303fee](https://github.com/code-yeongyu/oh-my-openagent/commit/e303fee)）。
 - 2026-05-06：Dori 这个名字进入 omo 的 README（[#3807](https://github.com/code-yeongyu/oh-my-openagent/pull/3807)）。
-- 2026-10-07：本仓库以 `omo-dori-mode-experimental` 的名字发布 Dori 模式（[ce53e4d](https://github.com/sisyphuslabs/dori-superharness-exp/commit/ce53e4d)）：一个 Agent 把每项工作交给 herdr 标签页里独立的 Agent 会话，活干完了才关掉它。git 历史是公开的。
+- 2026-10-07：本仓库以 `omo-dori-mode-experimental` 的名字发布 Dori 模式（[ce53e4d](https://github.com/sisyphuslabs/dori-superagent/commit/ce53e4d)）：一个 Agent 把每项工作交给 herdr 标签页里独立的 Agent 会话，活干完了才关掉它。git 历史是公开的。
 - 2026-10-31：DeepSeek 原型的首次提交。
 - 2026-11-01 前后：DeepSeek 的文章。
 
@@ -88,8 +88,8 @@ duty 循环是 `dori duty --interval 60`，一个普通进程，跑在 duty omo 
 需要 Bun 1.3 或更高版本、herdr、omo，以及 GitHub CLI `gh`（用来读 PR 的 head SHA、检查项状态，以及执行合并）。
 
 ```sh
-git clone https://github.com/sisyphuslabs/dori-superharness-exp
-cd dori-superharness-exp
+git clone https://github.com/sisyphuslabs/dori-superagent
+cd dori-superagent
 bun install
 bun link   # puts `dori` on your PATH; or write `bun src/cli.ts` wherever `dori` appears below
 ```
@@ -149,7 +149,7 @@ READY 必须带证据。没有至少一个 `--evidence` 链接，或者没有最
 Dori 模式是面向 IM 的那一半，2026-10-07 在本仓库发布。它把一个编程 Agent 会话变成常驻的 Agent，你在 IM 里和它说话。这个会话把每项工作交给 herdr 标签页里独立的 Agent 会话，为自己启动过的每个会话维护一份注册表，只有在工作被证明完成之后才关掉它：PR 已合并、issue 已关闭、版本已发布，或者一项它自己能跑的检查。它以一个 skill（`skills/dori-mode/SKILL.md` 加 `references/`）和自己的 Bun + TypeScript CLI 的形式发布，这个 CLI 也叫 `dori`。
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/sisyphuslabs/dori-superharness-exp/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/sisyphuslabs/dori-superagent/main/install.sh | bash
 ```
 
 这条命令把本仓库克隆到 `~/.dori/src`，把 skill 链接到 `~/.agents/skills/dori-mode`，用 `bun link` 把 Dori 模式的 `dori` 放到 PATH 上，再把示例配置复制到 `~/.dori/config.json`。命令、配置、路由和 done 协议见 [`skills/dori-mode/SKILL.md`](skills/dori-mode/SKILL.md) 和它的 [`references/`](skills/dori-mode/references/)。

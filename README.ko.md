@@ -2,7 +2,7 @@
   <img src="skills/dori-mode/assets/dori-avatar.png" alt="Dori" width="120">
 </p>
 
-# dori-superharness-exp
+# dori-superagent
 
 코딩 에이전트 세션 여러 개를 능동적으로 굴리는 하네스입니다. TypeScript 약 660줄이고, [herdr](https://github.com/herdrdev/herdr)와 [omo](https://github.com/code-yeongyu/oh-my-openagent) 위에서 돕니다.
 
@@ -18,7 +18,7 @@ DeepSeek이 [dsh-superagent-prototype](https://github.com/deepseek-ai/dsh-supera
 
 - 2026-04-18: omo에 팀 모드가 들어갔습니다. 터미널 pane마다 에이전트 세션 하나, 세션마다 worktree 하나입니다([f1268c0](https://github.com/code-yeongyu/oh-my-openagent/commit/f1268c0), [e303fee](https://github.com/code-yeongyu/oh-my-openagent/commit/e303fee)).
 - 2026-05-06: Dori라는 이름이 omo README에 올라갔습니다([#3807](https://github.com/code-yeongyu/oh-my-openagent/pull/3807)).
-- 2026-10-07: 이 저장소가 `omo-dori-mode-experimental`이라는 이름으로 Dori 모드를 공개했습니다([ce53e4d](https://github.com/sisyphuslabs/dori-superharness-exp/commit/ce53e4d)). 에이전트 하나가 일마다 herdr 탭에 에이전트 세션을 따로 띄워 맡기고, 일이 끝나야 닫습니다. git 히스토리가 공개돼 있습니다.
+- 2026-10-07: 이 저장소가 `omo-dori-mode-experimental`이라는 이름으로 Dori 모드를 공개했습니다([ce53e4d](https://github.com/sisyphuslabs/dori-superagent/commit/ce53e4d)). 에이전트 하나가 일마다 herdr 탭에 에이전트 세션을 따로 띄워 맡기고, 일이 끝나야 닫습니다. git 히스토리가 공개돼 있습니다.
 - 2026-10-31: DeepSeek 프로토타입의 첫 커밋.
 - 2026-11-01 무렵: DeepSeek의 글.
 
@@ -90,8 +90,8 @@ Dori 열은 저희가 실제로 굴리는 프로덕션 Dori와 Dori 모드(`skil
 Bun 1.3 이상, herdr, omo, 그리고 GitHub CLI `gh`가 필요합니다. `gh`는 PR의 head SHA와 체크를 읽고 머지할 때 씁니다.
 
 ```sh
-git clone https://github.com/sisyphuslabs/dori-superharness-exp
-cd dori-superharness-exp
+git clone https://github.com/sisyphuslabs/dori-superagent
+cd dori-superagent
 bun install
 bun link   # puts `dori` on your PATH; or write `bun src/cli.ts` wherever `dori` appears below
 ```
@@ -151,7 +151,7 @@ nudge는 10분, 20분, 40분입니다. `src/harness.ts`의 `NUDGE_MINUTES = [10,
 Dori 모드는 메신저 쪽 절반으로, 2026-10-07에 이 저장소에서 공개됐습니다. 코딩 에이전트 세션 하나를 메신저로 말을 거는, 늘 켜져 있는 에이전트로 만듭니다. 그 세션은 일마다 herdr 탭에 에이전트 세션을 따로 띄워 맡기고, 자기가 띄운 세션을 전부 레지스트리에 적어 두고, 일이 끝났다는 증명이 있어야 닫습니다. 증명은 머지된 PR, 닫힌 이슈, 배포된 버전, 아니면 스스로 돌려 볼 수 있는 체크입니다. 스킬(`skills/dori-mode/SKILL.md`와 `references/`)과 자체 Bun + TypeScript CLI로 나가고, CLI 이름도 `dori`입니다.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/sisyphuslabs/dori-superharness-exp/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/sisyphuslabs/dori-superagent/main/install.sh | bash
 ```
 
 이 한 줄이 저장소를 `~/.dori/src`에 클론하고, 스킬을 `~/.agents/skills/dori-mode`에 링크하고, `bun link`로 Dori 모드의 `dori`를 PATH에 올리고, 예시 설정을 `~/.dori/config.json`에 복사합니다. 명령, 설정, 라우팅, done 프로토콜은 [`skills/dori-mode/SKILL.md`](skills/dori-mode/SKILL.md)와 그 [`references/`](skills/dori-mode/references/)에 있습니다.
