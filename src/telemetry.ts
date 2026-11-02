@@ -84,9 +84,16 @@ export class Telemetry implements Usage {
     clearTimeout(timer);
   }
 
+  // The first write is exclusive, so two first runs racing each other end up on one install id.
   private load(): State {
-    if (existsSync(this.path)) return JSON.parse(readFileSync(this.path, "utf8")) as State;
-    return { installId: randomBytes(16).toString("hex") };
+    if (!existsSync(this.path)) {
+      try {
+        writeFileSync(this.path, JSON.stringify({ installId: randomBytes(16).toString("hex") }) + "\n", { mode: 0o600, flag: "wx" });
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      }
+    }
+    return JSON.parse(readFileSync(this.path, "utf8")) as State;
   }
 
   private save(state: State): void {

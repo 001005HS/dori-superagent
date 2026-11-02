@@ -162,7 +162,8 @@ if (import.meta.main) {
     if (!(e instanceof Refusal)) throw e;
     console.error(e.message);
     code = 2;
+  } finally {
+    await deps.usage.flush(2000);
   }
-  await deps.usage.flush(2000);
   process.exit(code);
 }

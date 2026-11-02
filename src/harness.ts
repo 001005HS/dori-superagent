@@ -218,6 +218,7 @@ export async function dutyTick(d: Deps): Promise<DutyEvent[]> {
     }
   }
   const count = (pred: (a: string) => boolean) => events.filter((e) => pred(e.action)).length;
+  d.usage.touch();
   d.usage.duty({
     ticks: 1,
     flushed: count((a) => a === "flushed"),

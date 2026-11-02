@@ -94,6 +94,7 @@ describe("duty loop", () => {
     w.clock += 30 * 60_000;
     expect(await dutyTick(d)).toEqual([]);
     expect(d.store.lane("busy")!.lastActivityAt).toBe(w.clock);
+    expect(w.touches).toBeGreaterThan(0);
     w.panes.delete(lane.paneId);
     expect(await dutyTick(d)).toContainEqual({ lane: "busy", action: "lost" });
     expect(lead.received.at(-1)).toContain("[LOST busy]");

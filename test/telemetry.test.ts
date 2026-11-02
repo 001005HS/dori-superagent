@@ -155,7 +155,7 @@ describe("telemetry", () => {
     const r = rig();
     r.t.touch();
     await r.t.flush(5000);
-    expect(statSync(join(r.home, "telemetry.json")).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect(statSync(join(r.home, "telemetry.json")).mode & 0o777).toBe(0o600);
     writeFileSync(join(r.home, "telemetry.json"), "{ not json");
     r.t.record({ name: "dori.lane_started", open_lanes: 1 });
     await r.t.flush(5000);
@@ -169,5 +169,20 @@ describe("telemetry", () => {
     expect(Date.now() - started).toBeLessThan(50);
     await hung.flush(100);
     expect(Date.now() - started).toBeLessThan(1000);
+  });
+
+  test("two first runs racing on one home share a single install id", async () => {
+    const home = mkdtempSync(join(tmpdir(), "dori-tel-"));
+    const hashes: string[] = [];
+    const sender = async (url: string, body: string) => {
+      if (url.endsWith("/v1/register")) hashes.push(JSON.parse(body).install_hash);
+      return { status: url.endsWith("/v1/register") ? 200 : 200, text: JSON.stringify({ key: "k" }) };
+    };
+    const a = new Telemetry(home, {}, sender, Date.now, () => {});
+    const b = new Telemetry(home, {}, sender, Date.now, () => {});
+    a.touch();
+    b.touch();
+    await Promise.all([a.flush(5000), b.flush(5000)]);
+    expect(new Set(hashes).size).toBe(1);
   });
 });

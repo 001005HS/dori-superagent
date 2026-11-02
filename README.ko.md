@@ -180,11 +180,11 @@ dori는 omo와 같은 방식으로 익명 사용 횟수를 보냅니다. OTLP/HT
 
 ## 테스트
 
-저장소 루트에서 `bun test ./test/`를 치면 하네스 테스트 19개가 돌고, 모델은 부르지 않습니다. 그냥 `bun test`를 치면 Dori 모드 테스트까지 같이 돕니다.
+저장소 루트에서 `bun test ./test/`를 치면 하네스 테스트 20개가 돌고, 모델은 부르지 않습니다. 그냥 `bun test`를 치면 Dori 모드 테스트까지 같이 돕니다.
 
 하네스 단위 테스트 8개(`test/harness.test.ts`)는 가짜 herdr(`test/fake.ts`)를 상대로 돕니다. `herdr`와 `gh` 바이너리 대신 들어가는 레코더로, 에이전트 상태를 바꿀 수 있는 pane들을 들고 있고, 테스트가 손으로 돌리는 시계가 있습니다. 다루는 것은 레인 시작과 READY, 바쁜 리드의 큐와 묶음 전달, 모르는 대상 거절, 10분과 20분의 nudge와 40분의 에스컬레이션과 WAITING 레인 제외, working과 lost 상태, 머지 게이트의 모든 분기(영수증 없음, BLOCK, 빈 체크 목록, 빨간 체크, 전부 skip, CLEAR + 녹색), VERDICT 줄 없는 리뷰어입니다.
 
-텔레메트리 단위 테스트 10개(`test/telemetry.test.ts`)는 끄기, 첫 실행 안내와 하루 한 번의 `dori.daily_active`, 설치별 키를 한 번만 발급받아 캐시하고 401 뒤에 다시 발급받는 것, 등록된 스키마에 맞는 페이로드(scope 이름과 버전, 허용된 리소스 키만, 횟수만), 수집기가 200 응답 안에서 거절한 레코드(`partialSuccess.rejectedLogRecords`)를 따로 세는 것, 한 시간 단위 듀티 요약, 오프라인에서 처음 실행해도 `dori.installed`와 `dori.daily_active`를 전송이 성공할 때까지 남겨 두는 것, 상태 파일 권한이 0600이고 깨진 상태 파일에도 throw하지 않는 것, 호출이 바로 돌아오고 flush가 기한에 포기하는 것, 수집기에 닿지 않거나 등록이 거절돼도 throw하지 않고 로그도 보내지 않는 것을 확인합니다.
+텔레메트리 단위 테스트 11개(`test/telemetry.test.ts`)는 끄기, 첫 실행 안내와 하루 한 번의 `dori.daily_active`, 설치별 키를 한 번만 발급받아 캐시하고 401 뒤에 다시 발급받는 것, 등록된 스키마에 맞는 페이로드(scope 이름과 버전, 허용된 리소스 키만, 횟수만), 수집기가 200 응답 안에서 거절한 레코드(`partialSuccess.rejectedLogRecords`)를 따로 세는 것, 한 시간 단위 듀티 요약, 오프라인에서 처음 실행해도 `dori.installed`와 `dori.daily_active`를 전송이 성공할 때까지 남겨 두는 것, 상태 파일 권한이 0600이고 깨진 상태 파일에도 throw하지 않는 것, 호출이 바로 돌아오고 flush가 기한에 포기하는 것, 같은 홈에서 동시에 시작한 첫 실행 둘이 설치 id 하나를 나눠 쓰는 것, 수집기에 닿지 않거나 등록이 거절돼도 throw하지 않고 로그도 보내지 않는 것을 확인합니다.
 
 엔드투엔드 테스트 1개(`test/e2e.test.ts`)는 격리된 이름의 세션에 진짜 herdr 서버를 띄우고, 워크스페이스를 만들고, 리드 pane을 등록하고, omo 대신 `test/fixtures/fake-agent.sh`를 에이전트로 쓰는 레인을 시작합니다. 이 스크립트는 브리프를 읽고 `dori report`와 `dori ready`를 부르고, 테스트는 `[START]`, `[REPORT]`, `[READY]`가 리드 pane에 도착하는지와 `dori done`이 레인을 닫는지 확인합니다. PATH에 `herdr`가 없으면 건너뛰고, `DORI_TELEMETRY=0`으로 돕니다. `bun run typecheck`는 `tsc --noEmit`입니다.
 
