@@ -164,7 +164,7 @@ curl -fsSL https://raw.githubusercontent.com/sisyphuslabs/dori-superagent/main/i
 
 ## 텔레메트리
 
-dori는 omo와 같은 방식으로 익명 사용 횟수를 보냅니다. OTLP/HTTP JSON 로그를 omo 수집기 `https://t.omo.dev`로 보냅니다. 식별자는 `~/.dori/telemetry.json`에 둔 무작위 설치 id 하나이고, 보내는 것은 그 sha256뿐입니다. 처음 실행하면 한 줄 안내가 뜹니다. `DORI_TELEMETRY=0`으로 끕니다(`DO_NOT_TRACK=1`도 됩니다). `DORI_TELEMETRY_ENDPOINT`는 수집기 URL을 바꿉니다.
+dori는 omo와 같은 방식으로 익명 사용 횟수를 보냅니다. OTLP/HTTP JSON 로그를 omo 수집기 `https://t.omo.dev`로 보냅니다. 식별자는 `~/.dori/telemetry.json`에 둔 무작위 설치 id 하나이고, 보내는 것은 그 sha256뿐입니다. 첫 전송 때 수집기가 그 해시로 설치별 ingest 키를 발급하고(`POST /v1/register`), 키는 `~/.dori/telemetry.json`에 캐시해 두고 수집기가 거절하면 다시 발급받습니다. 코드에 공유 키는 들어 있지 않습니다. 처음 실행하면 한 줄 안내가 뜹니다. `DORI_TELEMETRY=0`으로 끕니다(`DO_NOT_TRACK=1`도 됩니다). `DORI_TELEMETRY_ENDPOINT`는 수집기 URL을 바꿉니다.
 
 | 이벤트 | 언제 | 필드 |
 |---|---|---|
@@ -176,15 +176,15 @@ dori는 omo와 같은 방식으로 익명 사용 횟수를 보냅니다. OTLP/HT
 | `dori.merge_decided` | `--dry-run`이 아닌 `dori merge` | `outcome`: `merged`, `no_receipt`, `review_block`, `no_checks`, `checks_red`, `checks_all_skipped` |
 | `dori.duty_summary` | 듀티 루프에서 한 시간에 최대 한 번 | `ticks`, `flushed`, `nudges`, `escalations`, `lost` |
 
-일간, 주간, 월간 활성 수는 `dori.daily_active`로 셉니다. 레코드마다 리소스 필드가 같이 붙습니다. 서비스 이름과 버전, 설치 해시, 스키마 버전, CI 여부, OS 종류와 버전, CPU 아키텍처입니다. 경로, 저장소 이름, PR 번호, 레인 키, 브리프, 메시지, 그 밖의 어떤 텍스트도 보내지 않습니다. 전송은 2초 타임아웃을 두고 best effort로 하고, 명령을 막거나 실패시키지 않습니다.
+일간, 주간, 월간 활성 수는 `dori.daily_active`로 셉니다. 레코드마다 리소스 필드가 같이 붙습니다. 서비스 이름과 버전, 설치 해시, CI 여부, OS 종류와 버전, CPU 아키텍처입니다. OS 종류는 `darwin`, `linux`, `windows` 중 하나이고, 그 밖의 OS에서는 아무것도 보내지 않습니다. 경로, 저장소 이름, PR 번호, 레인 키, 브리프, 메시지, 그 밖의 어떤 텍스트도 보내지 않습니다. 전송은 2초 타임아웃을 두고 best effort로 하고, 명령을 막거나 실패시키지 않습니다.
 
 ## 테스트
 
-저장소 루트에서 `bun test ./test/`를 치면 하네스 테스트 14개가 돌고, 모델은 부르지 않습니다. 그냥 `bun test`를 치면 Dori 모드 테스트까지 같이 돕니다.
+저장소 루트에서 `bun test ./test/`를 치면 하네스 테스트 15개가 돌고, 모델은 부르지 않습니다. 그냥 `bun test`를 치면 Dori 모드 테스트까지 같이 돕니다.
 
 하네스 단위 테스트 8개(`test/harness.test.ts`)는 가짜 herdr(`test/fake.ts`)를 상대로 돕니다. `herdr`와 `gh` 바이너리 대신 들어가는 레코더로, 에이전트 상태를 바꿀 수 있는 pane들을 들고 있고, 테스트가 손으로 돌리는 시계가 있습니다. 다루는 것은 레인 시작과 READY, 바쁜 리드의 큐와 묶음 전달, 모르는 대상 거절, 10분과 20분의 nudge와 40분의 에스컬레이션과 WAITING 레인 제외, working과 lost 상태, 머지 게이트의 모든 분기(영수증 없음, BLOCK, 빈 체크 목록, 빨간 체크, 전부 skip, CLEAR + 녹색), VERDICT 줄 없는 리뷰어입니다.
 
-텔레메트리 단위 테스트 5개(`test/telemetry.test.ts`)는 끄기, 첫 실행 안내와 하루 한 번의 `dori.daily_active`, 횟수만 담긴 OTLP JSON 페이로드, 한 시간 단위 듀티 요약, 수집기가 죽었거나 키가 없어도 throw하지 않는 것을 확인합니다.
+텔레메트리 단위 테스트 6개(`test/telemetry.test.ts`)는 끄기, 첫 실행 안내와 하루 한 번의 `dori.daily_active`, 설치별 키를 한 번만 발급받아 캐시하고 401 뒤에 다시 발급받는 것, 등록된 스키마에 맞는 페이로드(허용된 리소스 키만, 횟수만), 한 시간 단위 듀티 요약, 수집기에 닿지 않거나 등록이 거절돼도 throw하지 않고 로그도 보내지 않는 것을 확인합니다.
 
 엔드투엔드 테스트 1개(`test/e2e.test.ts`)는 격리된 이름의 세션에 진짜 herdr 서버를 띄우고, 워크스페이스를 만들고, 리드 pane을 등록하고, omo 대신 `test/fixtures/fake-agent.sh`를 에이전트로 쓰는 레인을 시작합니다. 이 스크립트는 브리프를 읽고 `dori report`와 `dori ready`를 부르고, 테스트는 `[START]`, `[REPORT]`, `[READY]`가 리드 pane에 도착하는지와 `dori done`이 레인을 닫는지 확인합니다. PATH에 `herdr`가 없으면 건너뛰고, `DORI_TELEMETRY=0`으로 돕니다. `bun run typecheck`는 `tsc --noEmit`입니다.
 

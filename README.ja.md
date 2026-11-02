@@ -164,7 +164,7 @@ curl -fsSL https://raw.githubusercontent.com/sisyphuslabs/dori-superagent/main/i
 
 ## テレメトリ
 
-dori は omo と同じやり方で匿名の利用回数を送ります。OTLP/HTTP の JSON ログを、omo のコレクター `https://t.omo.dev` に送ります。識別子は `~/.dori/telemetry.json` に置いたランダムなインストール id で、送るのはその sha256 だけです。初回の実行では一行の通知を表示します。`DORI_TELEMETRY=0` で止まります（`DO_NOT_TRACK=1` でも止まります）。`DORI_TELEMETRY_ENDPOINT` でコレクターの URL を差し替えられます。
+dori は omo と同じやり方で匿名の利用回数を送ります。OTLP/HTTP の JSON ログを、omo のコレクター `https://t.omo.dev` に送ります。識別子は `~/.dori/telemetry.json` に置いたランダムなインストール id で、送るのはその sha256 だけです。初回の送信時に、コレクターがそのハッシュからインストールごとの ingest key を発行します（`POST /v1/register`）。key は `~/.dori/telemetry.json` にキャッシュし、コレクターが拒否したら発行し直します。コードには共有の key は入っていません。初回の実行では一行の通知を表示します。`DORI_TELEMETRY=0` で止まります（`DO_NOT_TRACK=1` でも止まります）。`DORI_TELEMETRY_ENDPOINT` でコレクターの URL を差し替えられます。
 
 | イベント | いつ | フィールド |
 |---|---|---|
@@ -176,15 +176,15 @@ dori は omo と同じやり方で匿名の利用回数を送ります。OTLP/HT
 | `dori.merge_decided` | `--dry-run` なしの `dori merge` | `outcome`: `merged`、`no_receipt`、`review_block`、`no_checks`、`checks_red`、`checks_all_skipped` |
 | `dori.duty_summary` | duty ループから一時間に最大一回 | `ticks`、`flushed`、`nudges`、`escalations`、`lost` |
 
-日次、週次、月次のアクティブ数は `dori.daily_active` から数えます。どのレコードにもリソースフィールドが付きます。サービス名とバージョン、インストールのハッシュ、スキーマのバージョン、CI フラグ、OS の種類とバージョン、CPU アーキテクチャです。パス、リポジトリ名、PR 番号、lane の key、brief、メッセージ、その他のテキストは一切送りません。送信はベストエフォートで、タイムアウトは 2 秒、コマンドをブロックすることも失敗させることもありません。
+日次、週次、月次のアクティブ数は `dori.daily_active` から数えます。どのレコードにもリソースフィールドが付きます。サービス名とバージョン、インストールのハッシュ、CI フラグ、OS の種類（`darwin`、`linux`、`windows` のいずれか。それ以外の OS では何も送りません）とバージョン、CPU アーキテクチャです。パス、リポジトリ名、PR 番号、lane の key、brief、メッセージ、その他のテキストは一切送りません。送信はベストエフォートで、タイムアウトは 2 秒、コマンドをブロックすることも失敗させることもありません。
 
 ## テスト
 
-リポジトリのルートで `bun test ./test/` を実行すると、ハーネスの 14 個のテストが走ります。モデルは呼びません。素の `bun test` だと Dori モードのテストも拾います。
+リポジトリのルートで `bun test ./test/` を実行すると、ハーネスの 15 個のテストが走ります。モデルは呼びません。素の `bun test` だと Dori モードのテストも拾います。
 
 ハーネスのユニットテスト 8 個（`test/harness.test.ts`）は偽の herdr（`test/fake.ts`）に対して走ります。`herdr` と `gh` のバイナリの代わりを務めるレコーダーで、エージェント状態を設定できるペインを持ち、テストから進められる時計を持っています。カバーするのは、lane の開始と READY、忙しい lead に対するキューと一括配信、未知の宛先の拒否、10 分と 20 分の催促と 40 分のエスカレーションと WAITING の lane の放置、working と lost の状態、マージゲートの全分岐（receipt なし、BLOCK、空のチェック一覧、赤いチェック、全部スキップ、CLEAR とグリーン）、そして VERDICT 行のないレビュアーです。
 
-テレメトリのユニットテスト 5 個（`test/telemetry.test.ts`）は、オプトアウト、初回の通知と一日一回の `dori.daily_active`、回数だけを載せた OTLP JSON ペイロード、一時間ごとの duty サマリー、そしてコレクターが落ちていても key がなくても throw しないことを確認します。
+テレメトリのユニットテスト 6 個（`test/telemetry.test.ts`）は、オプトアウト、初回の通知と一日一回の `dori.daily_active`、インストールごとの key が一度だけ発行されてキャッシュされ 401 の後に発行し直されること、登録済みのスキーマに合うペイロード（許可されたリソースキーのみ、回数のみ）、一時間ごとの duty サマリー、そしてコレクターに届かないか登録を拒否されても throw せずログも送らないことを確認します。
 
 エンドツーエンドテスト 1 個（`test/e2e.test.ts`）は、隔離した名前付きセッションで本物の herdr サーバーを起動し、ワークスペースを作り、lead ペインを登録して、omo の代わりに `test/fixtures/fake-agent.sh` をエージェントにした lane を開始します。このスクリプトは brief を読んで `dori report` と `dori ready` を呼び、テストは `[START]`、`[REPORT]`、`[READY]` が lead ペインに届くことと、`dori done` が lane を閉じることを確認します。PATH に `herdr` がなければスキップされ、`DORI_TELEMETRY=0` で走ります。`bun run typecheck` は `tsc --noEmit` を実行します。
 

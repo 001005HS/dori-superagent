@@ -8,7 +8,6 @@ import { join } from "node:path";
 // Off with DORI_TELEMETRY=0 or DO_NOT_TRACK=1.
 
 export const VERSION = "0.1.0";
-const SCHEMA_VERSION = 1;
 const HOUR_MS = 3_600_000;
 
 export type MergeOutcome = "merged" | "no_receipt" | "review_block" | "no_checks" | "checks_red" | "checks_all_skipped";
@@ -23,7 +22,7 @@ export type TelemetryEvent =
   | { name: "dori.review_completed"; verdict: "CLEAR" | "BLOCK" }
   | ({ name: "dori.duty_summary" } & DutyCounts);
 
-export type Sender = (url: string, body: string, headers: Record<string, string>) => Promise<void>;
+export type Sender = (url: string, body: string, headers: Record<string, string>) => Promise<{ status: number; text: string }>;
 
 export interface Usage {
   touch(): Promise<void>;
@@ -38,19 +37,21 @@ const isOn = (v: string | undefined) => v !== undefined && ["1", "true", "yes"].
 
 export const telemetryEnabled = (env: NodeJS.ProcessEnv): boolean => !isOff(env["DORI_TELEMETRY"]) && !isOn(env["DO_NOT_TRACK"]);
 
-// Public client key for the dori-superagent product, the same kind omo ships in its client.
-export const INGEST_KEY = "";
-
 type State = {
   installId: string;
+  key?: string;
   noticeShown?: boolean;
   lastActiveDay?: string;
   duty?: DutyCounts & { since: number };
 };
 
 const fetchSender: Sender = async (url, body, headers) => {
-  await fetch(url, { method: "POST", body, headers, signal: AbortSignal.timeout(2000) });
+  const res = await fetch(url, { method: "POST", body, headers, signal: AbortSignal.timeout(2000) });
+  return { status: res.status, text: await res.text() };
 };
+
+const OS_TYPE: Record<string, string> = { darwin: "darwin", linux: "linux", win32: "windows" };
+const HOST_ARCH: Record<string, string> = { x64: "amd64", arm64: "arm64", ia32: "x86", arm: "arm32" };
 
 export class Telemetry implements Usage {
   constructor(
@@ -90,14 +91,14 @@ export class Telemetry implements Usage {
       state.lastActiveDay = day;
     }
     this.save(state);
-    await this.emit(state.installId, events);
+    await this.emit(state, events);
   }
 
   async record(event: TelemetryEvent): Promise<void> {
     if (!telemetryEnabled(this.env)) return;
     const { state, fresh } = this.load();
     if (fresh) this.save(state);
-    await this.emit(state.installId, [event]);
+    await this.emit(state, [event]);
   }
 
   async duty(counts: DutyCounts): Promise<void> {
@@ -114,32 +115,55 @@ export class Telemetry implements Usage {
     const { since: _since, ...totals } = acc;
     state.duty = undefined;
     this.save(state);
-    await this.emit(state.installId, [{ name: "dori.duty_summary", ...totals }]);
+    await this.emit(state, [{ name: "dori.duty_summary", ...totals }]);
   }
 
-  private async emit(installId: string, events: TelemetryEvent[]): Promise<void> {
-    const key = this.env["DORI_TELEMETRY_KEY"] ?? INGEST_KEY;
-    if (events.length === 0 || key === "") return;
+  private async emit(state: State, events: TelemetryEvent[]): Promise<void> {
+    if (events.length === 0 || OS_TYPE[platform()] === undefined) return;
     const endpoint = (this.env["DORI_TELEMETRY_ENDPOINT"] ?? "https://t.omo.dev").replace(/\/+$/, "");
-    const body = JSON.stringify(otlpLogs(installId, events, this.now(), this.env));
+    const installHash = createHash("sha256").update(state.installId).digest("hex");
     try {
-      await this.send(`${endpoint}/v1/logs`, body, { "content-type": "application/json", "x-omo-ingest-key": key });
+      const key = this.env["DORI_TELEMETRY_KEY"] ?? state.key ?? (await this.register(endpoint, installHash, state));
+      if (key === undefined) return;
+      const body = JSON.stringify(otlpLogs(installHash, events, this.now(), this.env));
+      const res = await this.send(`${endpoint}/v1/logs`, body, { "content-type": "application/json", "x-omo-ingest-key": key });
+      if (res.status === 401 && state.key !== undefined) {
+        state.key = undefined;
+        this.save(state);
+      }
     } catch {
       // best effort by design: a failed or slow send never changes what the command does
     }
   }
+
+  // The collector mints a key bound to this install hash; it is cached locally and never shared between installs.
+  private async register(endpoint: string, installHash: string, state: State): Promise<string | undefined> {
+    const res = await this.send(`${endpoint}/v1/register`, JSON.stringify({ product: "dori-superagent", install_hash: installHash }), {
+      "content-type": "application/json",
+    });
+    if (res.status !== 200) return undefined;
+    const key = (JSON.parse(res.text) as { key?: unknown }).key;
+    if (typeof key !== "string" || key === "") return undefined;
+    state.key = key;
+    this.save(state);
+    return key;
+  }
 }
 
 export const noUsage: Usage = { touch: async () => {}, record: async () => {}, duty: async () => {} };
+
+const osVersion = () => {
+  const v = release().match(/^\d{1,6}(?:\.\d{1,6}){1,3}/)?.[0];
+  return v === undefined ? [] : [attr("os.version", v)];
+};
 
 type AnyValue = { stringValue: string } | { intValue: string } | { boolValue: boolean };
 const value = (v: string | number | boolean): AnyValue =>
   typeof v === "string" ? { stringValue: v } : typeof v === "boolean" ? { boolValue: v } : { intValue: String(Math.trunc(v)) };
 const attr = (key: string, v: string | number | boolean) => ({ key, value: value(v) });
 
-export function otlpLogs(installId: string, events: readonly TelemetryEvent[], nowMs: number, env: NodeJS.ProcessEnv) {
+export function otlpLogs(installHash: string, events: readonly TelemetryEvent[], nowMs: number, env: NodeJS.ProcessEnv) {
   const timeUnixNano = (BigInt(nowMs) * 1_000_000n).toString();
-  const os = platform();
   return {
     resourceLogs: [
       {
@@ -147,12 +171,11 @@ export function otlpLogs(installId: string, events: readonly TelemetryEvent[], n
           attributes: [
             attr("service.name", "dori-superagent"),
             attr("service.version", VERSION),
-            attr("dori.install.hash", createHash("sha256").update(installId).digest("hex")),
-            attr("dori.schema.version", SCHEMA_VERSION),
-            attr("dori.ci", isOn(env["CI"]) || env["CI"] === "true"),
-            attr("os.type", os === "win32" ? "windows" : os),
-            attr("os.version", release().match(/^\d+(?:\.\d+){1,3}/)?.[0] ?? "0.0"),
-            attr("host.arch", ({ x64: "amd64", arm64: "arm64" } as Record<string, string>)[arch()] ?? "other"),
+            attr("dori.install.hash", installHash),
+            attr("dori.ci", isOn(env["CI"])),
+            attr("os.type", OS_TYPE[platform()] ?? "linux"),
+            ...osVersion(),
+            attr("host.arch", HOST_ARCH[arch()] ?? "other"),
           ],
         },
         scopeLogs: [
