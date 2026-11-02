@@ -8,7 +8,7 @@ A proactive multi-session coding-agent harness in about 660 lines of TypeScript,
 
 English | [한국어](README.ko.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md)
 
-One lead session talks to you. Each task runs as a lane: its own omo session in its own herdr tab, started from a written brief and finished with a READY that must carry evidence. A duty loop nudges lanes that go quiet, escalates to the lead, and holds messages for busy panes until they can read them. Merges pass through a gate that wants a CLEAR review receipt at the exact head plus green checks.
+One lead session talks to you. Each task runs as a lane: its own omo session in its own herdr tab, started from a written brief and finished with a READY that must carry evidence. A duty loop nudges lanes that go quiet, escalates to the lead, and holds messages for busy panes until they can read them. Merges pass through a gate that requires a CLEAR review receipt at the exact head plus green checks.
 
 ## Why this exists
 
@@ -20,11 +20,38 @@ We have been running the same shape for about six months, in public:
 - 2026-05-06: the Dori name enters the omo README ([#3807](https://github.com/code-yeongyu/oh-my-openagent/pull/3807)).
 - 2026-10-07: this repository publishes Dori mode, as `omo-dori-mode-experimental` ([ce53e4d](https://github.com/sisyphuslabs/dori-superharness-exp/commit/ce53e4d)): one agent hands each job to its own agent session in a herdr tab and closes it only after the work is done. The git history is public.
 - 2026-10-31: DeepSeek's prototype gets its first commit.
-- 2026-11-01, about: DeepSeek's article.
+- Around 2026-11-01: DeepSeek's article.
 
 It is how we work every day. omo has 70k+ stars. Over the 31 days from 2026-10-03 to 2026-11-02, the [author's GitHub contribution calendar](https://github.com/code-yeongyu) shows 38,656 contributions: about 1,250 a day on average, with peaks of 2,227 on 2026-10-16 and 2,001 on 2026-10-29. That is up to ~2,000 contributions a day, produced with the full version of this setup.
 
 The harness at the root of this repo is the minimal version: the part that runs on herdr and omo alone, with nothing else attached.
+
+## Same structure, same philosophy
+
+Put DeepSeek's prototype docs next to Dori and the concepts line up one for one, in the structure of the pipeline and in the rules of their [philosophy doc](https://github.com/deepseek-ai/dsh-superagent-prototype/blob/main/docs/000-philosophy.md).
+
+![Dori vs DeepSeek](docs/dori-vs-deepseek.en.png)
+
+### Structure
+
+| DeepSeek dsh-superagent | Dori |
+|---|---|
+| Source: GitHub, Feishu | Dori lives in chat: Slack, Discord, Telegram |
+| Trigger, then Eval, then Ticket | One task asked in chat becomes one ticket |
+| Executor session per ticket: one session, one work directory | One coding-agent session per task, run on omo, many in parallel |
+| Channel: answers in the original conversation, with a PR for example | Reports in the same channel, one status message per task, edited in place |
+| Panel: shows only what needs a person | The ticket board and Notion stay current on their own |
+
+### Philosophy
+
+| DeepSeek dsh-superagent | Dori |
+|---|---|
+| Least human attention, most value | Short messages, no emojis, a ping only after the merge |
+| Acts only when asked or when a written team rule allows it | People set direction and bring new ideas; Dori starts no work nobody asked for |
+| Speaks only when a person must act, one question at a time | A decision comes with options, its own recommendation and one picture |
+| Reports honestly, never works around a block | No "done" without proof; checked against a real case, and the report is the merged result |
+
+The Dori column is our production Dori and Dori mode (`skills/dori-mode`). The harness at the root of this repo implements its lane, inbox, duty and merge-gate part on herdr and omo.
 
 ## Architecture
 
