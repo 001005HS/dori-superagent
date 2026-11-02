@@ -4,7 +4,7 @@
 
 # dori-superagent
 
-一个主动式、多会话的编程 Agent harness：约 1,170 行 TypeScript，跑在 [herdr](https://github.com/herdrdev/herdr) 和 [omo](https://github.com/code-yeongyu/oh-my-openagent) 之上。
+一个主动式、多会话的编程 Agent harness：约 1,300 行 TypeScript，跑在 [herdr](https://github.com/herdrdev/herdr) 和 [omo](https://github.com/code-yeongyu/oh-my-openagent) 之上。
 
 [English](README.md) | [한국어](README.ko.md) | 简体中文 | [日本語](README.ja.md)
 
@@ -63,7 +63,7 @@ lead 是唯一和你对话的会话。它把你的请求写成 brief，用 `dori
 
 duty 循环是 `dori duty --interval 60`，一个普通进程，跑在 duty omo 会话旁边的窗格里。每一轮它把排队的消息送进已经空闲的窗格，催一下沉默太久的 lane，向 lead 上报，并把窗格已经消失的 lane 标记为 lost。
 
-状态是 `~/.dori`（或 `$DORI_HOME`）下的 JSON 文件：`lanes/`、`inbox/`、`briefs/`、`receipts/`。harness 新增的常驻进程只有 duty 循环一个，运行时依赖只有 Bun 一个。
+状态是 `~/.dori`（或 `$DORI_HOME`）下的 JSON 文件：`lanes/`、`inbox/`、`briefs/`、`receipts/`，以及每小时循环用的 `backlog/` 和 `loop/`。harness 新增的常驻进程只有 duty 循环和每小时循环两个，运行时依赖只有 Bun 一个。
 
 ![lane lifecycle](docs/lane-flow.png)
 
@@ -157,15 +157,15 @@ dori backlog import owner/repo --label dori     # p1..p9 标签设优先级，ne
 dori backlog list
 ```
 
-每一轮按顺序做五件事：
+每一轮先过一道关：循环被停掉、另一个循环持有锁、或者距上一轮不到一小时，就什么也不做。过了这道关的一轮按顺序做五件事：
 
 1. 同步。lane 已结束、或 READY 的 PR 已合并的项目标为 done。lane 丢失的项目回到队列，丢失两次就变成一个问题。导入的 issue 已关闭的项目被移除。
 2. 漏办检查。3 小时没有汇报的 lane，READY 之后 2 小时没人关的 lane，窗格已经消失的 lane。
 3. 拉取下一项。按优先级、再按先后，启动没有待决问题的开放项目；开着的 lane 最多 `--max-lanes`（默认 3）条，每轮最多启动 `--max-starts`（默认 2）条。1 分钟负载高于核数（或 `--max-load`），或可用内存低于 10% 时，什么都不启动。
 4. 提问。每个待决问题以 `[DECIDE <id>]` 发给 lead 一次，6 小时后最多再提醒一次。lead 去问人，再用 `dori backlog decide <id> --text '...'` 记下答案（答案会追加到该项目的 brief 末尾），或用 `dori backlog drop <id>` 移除该项目。
-5. 汇报。一条 `[LOOP ...]` 消息发给 lead：开着的 lane 数与上限、待办计数、主机负载和可用内存，以及每一条发现。每一轮也会记录在 `~/.dori/loop/runs/`。
+5. 汇报。一条 `[LOOP ...]` 消息发给 lead：开着的 lane 数与上限、待办计数、主机负载和可用内存，以及每一条发现。过关的每一轮也会记录在 `~/.dori/loop/runs/`。
 
-循环只做两件事：开 lane、发消息。它从不合并、从不推送、从不关窗格、从不改 lane 记录；它调用 `gh` 只为读取。`dori loop stop --text '原因'` 是急停开关：在 `dori loop resume` 之前，每一轮都什么也不做。锁和上次运行的时间戳保证两个循环不会在同一个小时里重复跑，所以在窗格之外再用 cron 跑 `dori loop --once` 也是安全的。`dori loop status` 显示最近一轮。
+除了它自己的状态文件（待办项目、运行记录、锁），循环只做两件事：开 lane、发消息。它从不合并、从不推送、从不关窗格，也不改开着的 lane 的记录（重试一个丢失的项目时，用同一个 key 开一条新 lane）；它调用 `gh` 只为读取。`dori loop stop --text '原因'` 是急停开关：在 `dori loop resume` 之前，每一轮都什么也不做。锁和上次运行的时间戳保证两个循环不会在同一个小时里重复跑，所以在窗格之外再用 cron 跑 `dori loop --once` 也是安全的。`dori loop status` 显示最近一轮。
 
 ## Dori 模式（`skills/dori-mode`）
 
@@ -181,15 +181,15 @@ harness 和 Dori 模式都带一个叫 `dori` 的命令。一台机器只装其�
 
 ## 这不是什么
 
-一个最小实验。harness 是 Bun 上约 1,170 行 TypeScript，零运行时依赖，它不是我们的生产栈。有意不放进来的：跨机器的 mesh、heavy-slot 调度、聊天工具和工单系统的桥接，以及覆盖整个测试套件的回执。放进来的是光靠 herdr 和 omo 就能跑的部分：角色、lane、收件箱、duty 循环、每小时循环和待办，以及评审加合并门禁。`skills/dori-mode` 里的 Dori 模式是一个独立的 CLI，有自己的 IM 组件、主机守护和 heavy-slot 运行器；harness 不从它导入任何东西。
+一个最小实验。harness 是 Bun 上约 1,300 行 TypeScript，零运行时依赖，它不是我们的生产栈。有意不放进来的：跨机器的 mesh、heavy-slot 调度、聊天工具和工单系统的桥接，以及覆盖整个测试套件的回执。放进来的是光靠 herdr 和 omo 就能跑的部分：角色、lane、收件箱、duty 循环、每小时循环和待办，以及评审加合并门禁。`skills/dori-mode` 里的 Dori 模式是一个独立的 CLI，有自己的 IM 组件、主机守护和 heavy-slot 运行器；harness 不从它导入任何东西。
 
 ## 测试
 
-在仓库根目录跑 `bun test ./test/`，执行 harness 的 19 个测试，不调用任何模型。直接跑 `bun test` 会把 Dori 模式的测试也带上。
+在仓库根目录跑 `bun test ./test/`，执行 harness 的 24 个测试，不调用任何模型。直接跑 `bun test` 会把 Dori 模式的测试也带上。
 
 8 个单元测试（`test/harness.test.ts`）跑在一个假 herdr（`test/fake.ts`）上：它是一个录制器，顶替 `herdr` 和 `gh` 二进制，持有若干 Agent 状态可设置的窗格，还带一个由测试拨动的时钟。覆盖的场景有：lane 启动与 READY，lead 忙碌时的排队与成批送达，拒绝未知目标，10 和 20 分钟的催促、40 分钟的上报以及 WAITING 的 lane 不被打扰，working 和 lost 状态，合并门禁的每一个分支（没有回执、BLOCK、空检查列表、一项红色检查、全部跳过、CLEAR 加全绿），以及一个没有 VERDICT 行的评审者。
 
-另有 9 个单元测试（`test/loop.test.ts`）在同一个假 herdr 上跑每小时循环：待办的添加、决定、移除和导入，启动顺序与预算，lane 已满、主机繁忙和有待决问题时的暂缓，done、lost 和已合并 lane 的同步，漏办检查，每个问题只问一次、只提醒一次，急停开关和锁，以及 lane 启动失败。其中两个检查循环从不发出关窗格、合并或推送，漏办检查的测试还确认 lane 记录逐字节不变。
+另有 14 个单元测试（`test/loop.test.ts`）在同一个假 herdr 上跑每小时循环：待办的添加、决定、移除和导入，启动顺序与预算，lane 已满、主机繁忙和有待决问题时的暂缓，done、lost 和已合并 lane 的同步，漏办检查，每个问题只问一次、只提醒一次，急停开关，活着的、已死的和损坏的锁，运行中被抢走的锁，lane 启动失败，已经开出来却没能通知 lead 的 lane，试图跑出待办目录的 id，消失的 lane 记录，以及同一毫秒内的两轮。其中两个检查循环从不发出关窗格、合并或推送，漏办检查的测试还确认 lane 记录逐字节不变。
 
 2 个端到端测试（`test/e2e.test.ts`）。第一个在隔离的具名会话里起一个真实的 herdr 服务器，创建工作区，注册 lead 窗格，再启动一条 lane，其 Agent 用 `test/fixtures/fake-agent.sh` 顶替 omo。脚本读取 brief，调用 `dori report` 和 `dori ready`；测试检查 `[START]`、`[REPORT]`、`[READY]` 是否到达 lead 窗格，以及 `dori done` 是否关掉了这条 lane。第二个添加一个待办项目，运行 `dori loop --once`，检查循环启动的 lane 走到 READY、`[LOOP ...]` 到达 lead 窗格，以及 `dori loop stop` 之后的一轮什么也不做。PATH 上没有 `herdr` 时两者都会被跳过。`bun run typecheck` 执行 `tsc --noEmit`。
 

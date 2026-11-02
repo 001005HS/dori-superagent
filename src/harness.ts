@@ -2,10 +2,11 @@ import { readFileSync } from "node:fs";
 import { cpus, freemem, loadavg, totalmem } from "node:os";
 import { join, resolve } from "node:path";
 import { Herdr, shq, spawnExec, type AgentStatus, type Exec } from "./herdr.ts";
-import { Store, type HostLoad, type Lane, type Role } from "./store.ts";
+import { KEY_RE, Store, type HostLoad, type Lane, type Role } from "./store.ts";
+
+export { KEY_RE };
 
 export const NUDGE_MINUTES = [10, 20, 40] as const;
-export const KEY_RE = /^[a-z][a-z0-9-]{1,40}$/;
 const PROMPTS = join(import.meta.dir, "..", "prompts");
 const CLI = resolve(import.meta.dir, "cli.ts");
 

@@ -5,7 +5,7 @@ import {
   defaultDeps, done, dutyTick, mergeGate, ready, Refusal, report, review, send, startLane, ROLES, type Deps,
 } from "./harness.ts";
 import { shq } from "./herdr.ts";
-import { backlogAdd, backlogDecide, backlogDrop, backlogImport, loopTick, msUntilNext, summary, HOUR } from "./loop.ts";
+import { backlogAdd, backlogDecide, backlogDrop, backlogImport, loopTick, msUntilNext, summary, HOUR, IMPORT_LIMIT } from "./loop.ts";
 import type { Role } from "./store.ts";
 
 const USAGE = `dori - a proactive multi-session harness on herdr + omo
@@ -165,13 +165,18 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
         force: one(a, "force") === "true",
         ...(one(a, "max-load") ?? process.env["DORI_MAX_LOAD"] ? { maxLoad: Number(one(a, "max-load") ?? process.env["DORI_MAX_LOAD"]) } : {}),
       };
-      if (!(interval > 0) || !(opts.maxLanes >= 0) || !(opts.maxStarts >= 0) || !((opts.maxLoad ?? 1) > 0)) throw new Refusal("--interval, --max-lanes, --max-starts and --max-load must be positive numbers");
+      const count = (n: number): boolean => Number.isInteger(n) && n >= 0;
+      if (!(Number.isFinite(interval) && interval > 0) || !count(opts.maxLanes) || !count(opts.maxStarts) ||
+        !(opts.maxLoad === undefined || (Number.isFinite(opts.maxLoad) && opts.maxLoad > 0))) {
+        throw new Refusal("--interval and --max-load must be finite positive numbers; --max-lanes and --max-starts whole numbers >= 0");
+      }
       do {
         try {
           const run = await loopTick(d, opts);
           console.log(run.skipped ? `LOOP skipped: ${run.skipped}` : `LOOP started=${run.started.length} findings=${run.findings.length} asked=${run.asked.length}`);
         } catch (e) {
           console.error(`LOOP ERROR ${e instanceof Error ? e.message : String(e)}`);
+          if (one(a, "once")) return 1;
         }
         if (one(a, "once")) break;
         opts.force = false;
@@ -201,8 +206,9 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
         backlogDrop(d, id, one(a, "text"));
         console.log(`DROPPED ${id}`);
       } else if (x === "import") {
-        const added = await backlogImport(d, need(a.pos[2], "owner/repo"), one(a, "label") ?? "dori", one(a, "cwd"));
+        const { added, capped } = await backlogImport(d, need(a.pos[2], "owner/repo"), one(a, "label") ?? "dori", one(a, "cwd"));
         console.log(`IMPORTED ${added.length}${added.length ? `: ${added.join(", ")}` : ""}`);
+        if (capped) console.error(`WARNING: gh returned ${IMPORT_LIMIT} issues, the import limit; some labelled issues may be missing`);
       } else {
         throw new Refusal(`unknown backlog command ${x}\n\n${USAGE}`);
       }

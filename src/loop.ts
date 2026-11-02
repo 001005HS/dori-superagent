@@ -1,10 +1,11 @@
 // The hourly loop: sync the backlog with live lanes, audit for missed work, start the next item
 // that needs no decision, ask the lead the open questions, and record the run. It never merges,
 // never pushes, never closes a pane and never edits a lane record. See docs/hourly-loop.md.
-import { copyFileSync, existsSync, readFileSync, rmSync, writeFileSync, appendFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, existsSync, linkSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { KEY_RE, Refusal, startLane, tellLead, type Deps } from "./harness.ts";
-import type { Item, LoopRun } from "./store.ts";
+import type { Item, Lane, LoopRun } from "./store.ts";
 
 export const HOUR = 3_600_000;
 export const STALE_HOURS = 3;
@@ -49,9 +50,15 @@ export function backlogAdd(
   return item;
 }
 
-function openItem(d: Deps, id: string): Item {
+function knownItem(d: Deps, id: string): Item {
+  if (!KEY_RE.test(id)) throw new Refusal(`item id must match ${KEY_RE}`);
   const item = d.store.item(id);
   if (!item) throw new Refusal(`no backlog item ${id}`);
+  return item;
+}
+
+function openItem(d: Deps, id: string): Item {
+  const item = knownItem(d, id);
   if (item.status !== "open") throw new Refusal(`item ${id} is ${item.status}, not open`);
   return item;
 }
@@ -69,8 +76,7 @@ export function backlogDecide(d: Deps, id: string, answer: string): void {
 }
 
 export function backlogDrop(d: Deps, id: string, why = "dropped"): void {
-  const item = d.store.item(id);
-  if (!item) throw new Refusal(`no backlog item ${id}`);
+  const item = knownItem(d, id);
   if (item.status === "running") throw new Refusal(`item ${id} is running as a lane; close the lane first`);
   item.status = "dropped";
   log(d, item, "drop", why);
@@ -79,19 +85,33 @@ export function backlogDrop(d: Deps, id: string, why = "dropped"): void {
 type Issue = { number: number; title: string; body: string; labels: { name: string }[] };
 
 /** Open issues with a label become backlog items: label p1..p9 sets the priority, needs-decision marks a question. */
-export async function backlogImport(d: Deps, repo: string, label = "dori", cwd?: string): Promise<string[]> {
+export const IMPORT_LIMIT = 1000;
+
+/** A lane-key-safe id per source: `<repo>-<n>`, with a short hash of the full source when the slug had to be cut. */
+export function importId(repo: string, n: number): string {
+  const slug = repo.split("/")[1]!.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^[^a-z]+/, "") || "issue";
+  const plain = `${slug}-${n}`;
+  if (plain.length <= 41) return plain;
+  const tag = `-${createHash("sha256").update(`${repo}#${n}`).digest("hex").slice(0, 6)}-${n}`;
+  return `${slug.slice(0, 41 - tag.length).replace(/-+$/, "")}${tag}`;
+}
+
+export async function backlogImport(d: Deps, repo: string, label = "dori", cwd?: string): Promise<{ added: string[]; capped: boolean }> {
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Refusal(`repo must look like owner/repo, got ${repo}`);
-  const r = await d.exec("gh", ["issue", "list", "--repo", repo, "--label", label, "--state", "open", "--limit", "100", "--json", "number,title,body,labels"]);
+  const r = await d.exec("gh", ["issue", "list", "--repo", repo, "--label", label, "--state", "open", "--limit", String(IMPORT_LIMIT), "--json", "number,title,body,labels"]);
   if (r.code !== 0) throw new Error(`gh issue list failed: ${(r.stderr || r.stdout).trim()}`);
   const known = new Set(d.store.items().map((i) => i.source));
   const added: string[] = [];
-  for (const issue of JSON.parse(r.stdout) as Issue[]) {
+  const issues = JSON.parse(r.stdout) as Issue[];
+  for (const issue of issues) {
     const source = `${repo}#${issue.number}`;
     if (known.has(source)) continue;
     const names = issue.labels.map((l) => l.name);
     const p = names.map((n) => /^p([1-9])$/.exec(n)?.[1]).find(Boolean);
-    const id = `${repo.split("/")[1]!.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/^[^a-z]+/, "")}-${issue.number}`.slice(0, 41);
-    const brief = d.store.itemBrief(`${id}.import`);
+    const id = importId(repo, issue.number);
+    const clash = d.store.item(id);
+    if (clash && clash.source !== source) throw new Refusal(`import id ${id} for ${source} is already used by ${clash.source ?? "a hand-added item"}`);
+    const brief = d.store.loopPath(`import-${id}.md`);
     writeFileSync(brief, `# ${issue.title}\n\nSource: https://github.com/${repo}/issues/${issue.number}\n\n${issue.body}\n`);
     backlogAdd(d, id, brief, {
       title: issue.title, cwd, source,
@@ -101,10 +121,12 @@ export async function backlogImport(d: Deps, repo: string, label = "dori", cwd?:
     rmSync(brief, { force: true });
     added.push(id);
   }
-  return added;
+  return { added, capped: issues.length >= IMPORT_LIMIT };
 }
 
 // ---------- lock ----------
+
+type LockBody = { pid: number; at: number; nonce: string };
 
 function alive(pid: number): boolean {
   try {
@@ -115,22 +137,85 @@ function alive(pid: number): boolean {
   }
 }
 
-/** Atomic create; a lock is taken over only when its process is dead. Returns the holder when someone else has it. */
-function acquire(d: Deps): string | undefined {
-  const path = d.store.loopPath("lock");
-  for (let i = 0; i < 2; i++) {
-    try {
-      writeFileSync(path, JSON.stringify({ pid: process.pid, at: d.now() }), { flag: "wx" });
-      return undefined;
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
-      const held = JSON.parse(readFileSync(path, "utf8") || "{}") as { pid?: number; at?: number };
-      if (held.pid !== undefined && held.pid !== process.pid && alive(held.pid)) return `locked by pid ${held.pid}`;
-      if (held.pid === process.pid) return `locked by this process`;
-      rmSync(path, { force: true });
-    }
+function readLock(path: string): LockBody | "missing" | "corrupt" {
+  let text: string;
+  try {
+    text = readFileSync(path, "utf8");
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return "missing";
+    throw e;
   }
-  return "lock contended";
+  try {
+    const v = JSON.parse(text) as Partial<LockBody>;
+    return typeof v.pid === "number" && typeof v.nonce === "string" ? (v as LockBody) : "corrupt";
+  } catch {
+    return "corrupt";
+  }
+}
+
+const sameLock = (a: LockBody | "missing" | "corrupt", b: LockBody | "missing" | "corrupt"): boolean =>
+  typeof a === "string" || typeof b === "string" ? a === b : a.nonce === b.nonce;
+
+/**
+ * The lock is created whole with link(2), so it never exists half-written. A dead holder's (or corrupt) lock is
+ * moved aside with rename(2), which only one process can win; if what was moved is not the lock judged stale, it
+ * is linked back and this process backs off.
+ */
+function acquire(d: Deps): { nonce: string } | { holder: string } {
+  const path = d.store.loopPath("lock");
+  const nonce = randomUUID();
+  const tmp = `${path}.${nonce}`;
+  writeFileSync(tmp, JSON.stringify({ pid: process.pid, at: d.now(), nonce }));
+  try {
+    for (let i = 0; i < 3; i++) {
+      try {
+        linkSync(tmp, path);
+        return { nonce };
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      }
+      const seen = readLock(path);
+      if (seen === "missing") continue;
+      if (seen !== "corrupt" && alive(seen.pid)) return { holder: `locked by pid ${seen.pid}` };
+      const aside = `${path}.stale.${nonce}`;
+      try {
+        renameSync(path, aside);
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw e;
+      }
+      if (!sameLock(readLock(aside), seen)) {
+        try { linkSync(aside, path); } catch { /* another process holds a newer lock; it stays */ }
+        rmSync(aside, { force: true });
+        return { holder: "lock changed hands during takeover" };
+      }
+      rmSync(aside, { force: true });
+    }
+    return { holder: "lock contended" };
+  } finally {
+    rmSync(tmp, { force: true });
+  }
+}
+
+const holds = (d: Deps, nonce: string): boolean => {
+  const l = readLock(d.store.loopPath("lock"));
+  return typeof l !== "string" && l.nonce === nonce;
+};
+
+function release(d: Deps, nonce: string): void {
+  const path = d.store.loopPath("lock");
+  const aside = `${path}.release.${nonce}`;
+  try {
+    renameSync(path, aside);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw e;
+  }
+  const moved = readLock(aside);
+  if (typeof moved === "string" || moved.nonce !== nonce) {
+    try { linkSync(aside, path); } catch { /* a newer lock exists; leave it */ }
+  }
+  rmSync(aside, { force: true });
 }
 
 // ---------- one run ----------
@@ -149,16 +234,17 @@ async function sync(d: Deps, run: LoopRun): Promise<void> {
     try {
       if (item.status === "running") {
         const lane = d.store.lane(item.id);
-        if (!lane || lane.status === "done") {
+        if (lane?.status === "done") {
           item.status = "done";
-          log(d, item, "done", lane ? "lane done" : "lane record missing");
-          run.synced.push(`${item.id} done (${lane ? "lane done" : "lane record missing"})`);
-        } else if (lane.status === "lost") {
+          log(d, item, "done", "lane done");
+          run.synced.push(`${item.id} done (lane done)`);
+        } else if (!lane || lane.status === "lost") {
+          const why = lane ? "lane lost" : "lane record missing";
           item.status = "open";
           item.attempts += 1;
-          if (item.attempts >= MAX_ATTEMPTS) item.decision = `lane lost ${item.attempts} times; retry, re-brief or drop?`;
-          log(d, item, "reopen", `lane lost, attempt ${item.attempts}`);
-          run.synced.push(`${item.id} reopened (lane lost, attempt ${item.attempts})`);
+          if (item.attempts >= MAX_ATTEMPTS) item.decision = `${why} ${item.attempts} times; retry, re-brief or drop?`;
+          log(d, item, "reopen", `${why}, attempt ${item.attempts}`);
+          run.synced.push(`${item.id} reopened (${why}, attempt ${item.attempts})`);
         } else if (lane.status === "ready") {
           const m = lane.final?.evidence.map((e) => PR_RE.exec(e)).find(Boolean);
           if (m && (await ghState(d, "pr", m[1]!, m[2]!)) === "MERGED") {
@@ -182,6 +268,10 @@ async function sync(d: Deps, run: LoopRun): Promise<void> {
   }
 }
 
+/** The last time the lane itself said something (start or report). Pane polling by the duty loop does not count. */
+const lastReport = (lane: Lane): number =>
+  Math.max(lane.createdAt, ...lane.log.filter((e) => e.kind === "start" || e.kind === "report").map((e) => e.at));
+
 async function audit(d: Deps, run: LoopRun): Promise<void> {
   const now = d.now();
   for (const lane of d.store.lanes()) {
@@ -198,8 +288,8 @@ async function audit(d: Deps, run: LoopRun): Promise<void> {
     } else if (lane.status === "ready") {
       const age = now - (lane.final?.at ?? lane.lastActivityAt);
       if (age >= READY_HOURS * HOUR) run.findings.push(`${lane.key} READY ${hours(age)}h ago, not closed: dori done ${lane.key}`);
-    } else if (st !== "working" && now - lane.lastActivityAt >= STALE_HOURS * HOUR) {
-      const age = hours(now - lane.lastActivityAt);
+    } else if (now - lastReport(lane) >= STALE_HOURS * HOUR) {
+      const age = hours(now - lastReport(lane));
       run.findings.push(lane.status === "waiting"
         ? `${lane.key} waiting ${age}h on: ${lane.log.at(-1)?.text.slice(0, 80) ?? "?"}`
         : `${lane.key} working, no report for ${age}h`);
@@ -209,7 +299,7 @@ async function audit(d: Deps, run: LoopRun): Promise<void> {
 
 const isOpenLane = (status: string): boolean => status !== "done" && status !== "lost";
 
-async function pull(d: Deps, run: LoopRun, maxLanes: number, maxStarts: number, maxLoad?: number): Promise<void> {
+async function pull(d: Deps, run: LoopRun, maxLanes: number, maxStarts: number, maxLoad: number | undefined, nonce: string): Promise<void> {
   if (!d.store.roles().lead) {
     run.held.push("no lead pane registered");
     return;
@@ -227,13 +317,22 @@ async function pull(d: Deps, run: LoopRun, maxLanes: number, maxStarts: number, 
   let i = 0;
   for (; i < Math.min(starts, candidates.length); i++) {
     const item = candidates[i]!;
+    if (!holds(d, nonce)) {
+      run.held.push("lock lost to another loop; no more starts this run");
+      return;
+    }
     try {
       await startLane(d, item.id, item.brief, { cwd: item.cwd });
     } catch (e) {
-      item.attempts += 1;
-      log(d, item, "start", `failed: ${e instanceof Error ? e.message : String(e)}`);
-      run.findings.push(`start ${item.id} failed: ${e instanceof Error ? e.message : String(e)}`);
-      return;
+      const why = e instanceof Error ? e.message : String(e);
+      const lane = d.store.lane(item.id);
+      if (!lane || !isOpenLane(lane.status) || lane.createdAt < run.at) {
+        item.attempts += 1;
+        log(d, item, "start", `failed: ${why}`);
+        run.findings.push(`start ${item.id} failed: ${why}`);
+        return;
+      }
+      run.findings.push(`${item.id} started in ${lane.paneId} but the lead was not told: ${why}`);
     }
     item.status = "running";
     log(d, item, "start", "lane opened by the hourly loop");
@@ -283,8 +382,8 @@ export async function loopTick(d: Deps, opts: LoopOpts = {}): Promise<LoopRun> {
   const empty = { synced: [], findings: [], started: [], held: [], asked: [] };
   const stop = d.store.stop();
   if (stop) return { at: d.now(), skipped: `stopped: ${stop.reason}`, ...empty };
-  const holder = acquire(d);
-  if (holder) return { at: d.now(), skipped: holder, ...empty };
+  const lock = acquire(d);
+  if ("holder" in lock) return { at: d.now(), skipped: lock.holder, ...empty };
   try {
     const last = d.store.lastRun();
     if (last && !opts.force && d.now() - last.at < interval - GRACE_MS) {
@@ -293,7 +392,7 @@ export async function loopTick(d: Deps, opts: LoopOpts = {}): Promise<LoopRun> {
     const run: LoopRun = { at: d.now(), synced: [], findings: [], started: [], held: [], asked: [] };
     await sync(d, run);
     await audit(d, run);
-    await pull(d, run, maxLanes, maxStarts, opts.maxLoad);
+    await pull(d, run, maxLanes, maxStarts, opts.maxLoad, lock.nonce);
     ask(d, run);
     const items = d.store.items();
     const running = new Set(items.filter((i) => i.status === "running").map((i) => i.id));
@@ -313,16 +412,17 @@ export async function loopTick(d: Deps, opts: LoopOpts = {}): Promise<LoopRun> {
     try {
       await tellLead(d, summary(run), "loop");
     } catch (e) {
-      if (!(e instanceof Refusal)) throw e;
+      run.findings.push(`report to the lead failed: ${e instanceof Error ? e.message : String(e)}`);
+      writeFileSync(d.store.loopPath("last-run.json"), JSON.stringify(run, null, 2) + "\n");
     }
     return run;
   } finally {
-    rmSync(d.store.loopPath("lock"), { force: true });
+    release(d, lock.nonce);
   }
 }
 
 /** How long to sleep so runs stay on the hour of the last stamp, instead of drifting after a restart. */
 export function msUntilNext(d: Deps, interval: number): number {
   const last = d.store.lastRun();
-  return Math.max(1000, (last ? last.at + interval : d.now()) - d.now());
+  return Math.max(1000, (last ? last.at + interval : d.now() + interval) - d.now());
 }

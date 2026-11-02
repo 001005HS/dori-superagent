@@ -4,7 +4,7 @@
 
 # dori-superagent
 
-A proactive multi-session coding-agent harness in about 1,170 lines of TypeScript, running on [herdr](https://github.com/herdrdev/herdr) and [omo](https://github.com/code-yeongyu/oh-my-openagent).
+A proactive multi-session coding-agent harness in about 1,300 lines of TypeScript, running on [herdr](https://github.com/herdrdev/herdr) and [omo](https://github.com/code-yeongyu/oh-my-openagent).
 
 English | [한국어](README.ko.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md)
 
@@ -65,7 +65,7 @@ A lane is one omo session in its own herdr tab, started with one brief and the l
 
 The duty loop is `dori duty --interval 60`, a plain process in a pane next to a duty omo session. Each tick it flushes queued messages into panes that have gone idle, nudges lanes that have been silent, escalates to the lead, and marks a lane whose pane vanished as lost.
 
-State is JSON on disk under `~/.dori` (or `$DORI_HOME`): `lanes/`, `inbox/`, `briefs/`, `receipts/`. The only long-running process the harness adds is the duty loop, and the only runtime dependency is Bun.
+State is JSON on disk under `~/.dori` (or `$DORI_HOME`): `lanes/`, `inbox/`, `briefs/`, `receipts/`, plus `backlog/` and `loop/` for the hourly loop. The only long-running processes the harness adds are the duty loop and the hourly loop, and the only runtime dependency is Bun.
 
 ![lane lifecycle](docs/lane-flow.png)
 
@@ -159,15 +159,15 @@ dori backlog import owner/repo --label dori     # label p1..p9 sets the priority
 dori backlog list
 ```
 
-Each run does five things, in order:
+A run first checks its gate: it does nothing while the loop is stopped, while another loop holds the lock, or when the last run was less than an hour ago. A run that passes the gate does five things, in order:
 
 1. Sync. An item whose lane is done, or whose READY PR has merged, becomes done. An item whose lane was lost goes back to the queue, and after two losses it turns into a question. An imported item whose issue was closed is dropped.
 2. Missed-work audit. A lane with no report for 3 hours, a READY lane nobody closed for 2 hours, a lane whose pane vanished.
 3. Pull. It starts the next open items with no open question, by priority, then age, within `--max-lanes` (default 3) open lanes and `--max-starts` (default 2) per run. Nothing starts while the 1-minute load is above the core count (or `--max-load`) or less than 10% of memory is free.
 4. Ask. Each open question reaches the lead once as `[DECIDE <id>]`, with one reminder after 6 hours. The lead asks you, then records the answer with `dori backlog decide <id> --text '...'` (the answer is appended to the item's brief) or `dori backlog drop <id>`.
-5. Report. One `[LOOP ...]` message goes to the lead with open lanes against the limit, backlog counts, host load and free memory, and each finding. Every run is also kept in `~/.dori/loop/runs/`.
+5. Report. One `[LOOP ...]` message goes to the lead with open lanes against the limit, backlog counts, host load and free memory, and each finding. Every run that passes the gate is also kept in `~/.dori/loop/runs/`.
 
-The loop only opens lanes and sends messages. It never merges, never pushes, never closes a pane and never edits a lane record; its `gh` calls only read. `dori loop stop --text 'why'` is the kill switch: until `dori loop resume`, every run does nothing. A lock and a last-run stamp keep two loops from running the same hour twice, so `dori loop --once` from cron is safe next to the pane. `dori loop status` prints the last run.
+Besides its own state (backlog items, run records, the lock), the loop only opens lanes and sends messages. It never merges, never pushes, never closes a pane and never edits an open lane's record (retrying a lost item starts a fresh lane under the same key); its `gh` calls only read. `dori loop stop --text 'why'` is the kill switch: until `dori loop resume`, every run does nothing. A lock and a last-run stamp keep two loops from running the same hour twice, so `dori loop --once` from cron is safe next to the pane. `dori loop status` prints the last run.
 
 ## Dori mode (`skills/dori-mode`)
 
@@ -183,15 +183,15 @@ Both the harness and Dori mode ship a command named `dori`. Install one of them 
 
 ## What this is not
 
-A minimal experiment. The harness is about 1,170 lines of TypeScript on Bun with zero runtime dependencies, and it is not our production stack. Left out on purpose: the cross-machine mesh, heavy-slot scheduling, the chat and ticket-tracker bridges, and receipts for whole test suites. What is here is the part that runs on herdr and omo alone: roles, lanes, the inbox, the duty loop, the hourly loop and backlog, and the review and merge gate. Dori mode in `skills/dori-mode` is a separate CLI with its own messenger pieces, host guard and heavy-slot runner; the harness imports nothing from it.
+A minimal experiment. The harness is about 1,300 lines of TypeScript on Bun with zero runtime dependencies, and it is not our production stack. Left out on purpose: the cross-machine mesh, heavy-slot scheduling, the chat and ticket-tracker bridges, and receipts for whole test suites. What is here is the part that runs on herdr and omo alone: roles, lanes, the inbox, the duty loop, the hourly loop and backlog, and the review and merge gate. Dori mode in `skills/dori-mode` is a separate CLI with its own messenger pieces, host guard and heavy-slot runner; the harness imports nothing from it.
 
 ## Tests
 
-`bun test ./test/` at the repo root runs the harness's 19 tests and calls no model. Plain `bun test` would also pick up the Dori mode tests.
+`bun test ./test/` at the repo root runs the harness's 24 tests and calls no model. Plain `bun test` would also pick up the Dori mode tests.
 
 Eight unit tests (`test/harness.test.ts`) run against a fake herdr (`test/fake.ts`): a recorder that stands in for the `herdr` and `gh` binaries, holds panes with a settable agent status, and has a clock the tests move. They cover lane start and READY, the queue-and-batch behaviour of a busy lead, refused unknown targets, nudges at 10 and 20 with escalation at 40 and WAITING lanes left alone, the working and lost states, every branch of the merge gate (no receipt, BLOCK, empty check list, a red check, all checks skipped, CLEAR plus green), and a reviewer with no VERDICT line.
 
-Nine more unit tests (`test/loop.test.ts`) run the hourly loop on the same fake: backlog add, decide, drop and import; start order and budget; holds for full lanes, a busy host and open questions; sync of done, lost and merged lanes; the missed-work audit; one ask and one reminder per question; the kill switch and the lock; and a failed lane start. Two of them check that a run never sends a pane close, a merge or a push, and the audit test also checks that lane records stay byte-identical.
+Fourteen more unit tests (`test/loop.test.ts`) run the hourly loop on the same fake: backlog add, decide, drop and import; start order and budget; holds for full lanes, a busy host and open questions; sync of done, lost and merged lanes; the missed-work audit; one ask and one reminder per question; the kill switch, a live, dead or corrupt lock, and a lock lost mid-run; a failed lane start and a lane that opened but could not tell the lead; ids that try to leave the backlog directory; a vanished lane record; and two runs in the same millisecond. Two of them check that a run never sends a pane close, a merge or a push, and the audit test also checks that lane records stay byte-identical.
 
 Two end-to-end tests (`test/e2e.test.ts`). The first starts a real herdr server in an isolated named session, creates a workspace, registers a lead pane, and starts a lane whose agent is `test/fixtures/fake-agent.sh` in place of omo. The script reads its brief, calls `dori report` and `dori ready`, and the test checks that `[START]`, `[REPORT]` and `[READY]` arrive in the lead pane and that `dori done` closes the lane. The second adds a backlog item, runs `dori loop --once`, and checks that the lane it starts reaches READY, that `[LOOP ...]` reaches the lead pane, and that `dori loop stop` makes the next run do nothing. Both are skipped when `herdr` is not on PATH. `bun run typecheck` runs `tsc --noEmit`.
 

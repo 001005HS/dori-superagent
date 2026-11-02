@@ -71,6 +71,12 @@ export type LoopRun = {
 };
 
 export const KEEP_RUNS = 168;
+export const KEY_RE = /^[a-z][a-z0-9-]{1,40}$/;
+
+const checkedId = (id: string): string => {
+  if (!KEY_RE.test(id)) throw new Error(`invalid id ${JSON.stringify(id)}: must match ${KEY_RE}`);
+  return id;
+};
 
 export class Store {
   constructor(readonly root: string = process.env["DORI_HOME"] ?? join(homedir(), ".dori")) {
@@ -159,15 +165,15 @@ export class Store {
   // ---------- backlog ----------
 
   itemBrief(id: string): string {
-    return join(this.root, "backlog", `${id}.md`);
+    return join(this.root, "backlog", `${checkedId(id)}.md`);
   }
 
   item(id: string): Item | undefined {
-    return this.readJson<Item>(join(this.root, "backlog", `${id}.json`));
+    return this.readJson<Item>(join(this.root, "backlog", `${checkedId(id)}.json`));
   }
 
   saveItem(item: Item): void {
-    this.writeJson(join(this.root, "backlog", `${item.id}.json`), item);
+    this.writeJson(join(this.root, "backlog", `${checkedId(item.id)}.json`), item);
   }
 
   items(): Item[] {
@@ -203,7 +209,10 @@ export class Store {
   /** Writes the run record and the last-run stamp, keeping the newest KEEP_RUNS records. */
   saveRun(run: LoopRun): void {
     const dir = this.loopPath("runs");
-    this.writeJson(join(dir, `${new Date(run.at).toISOString().replaceAll(":", "-")}.json`), run);
+    const stem = new Date(run.at).toISOString().replaceAll(":", "-");
+    let name = `${stem}.json`;
+    for (let n = 2; existsSync(join(dir, name)); n++) name = `${stem}-${n}.json`;
+    this.writeJson(join(dir, name), run);
     this.writeJson(this.loopPath("last-run.json"), run);
     const files = readdirSync(dir).filter((f) => f.endsWith(".json")).sort();
     for (const f of files.slice(0, Math.max(0, files.length - KEEP_RUNS))) rmSync(join(dir, f), { force: true });

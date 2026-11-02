@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { done, ready, Refusal, report, startLane } from "../src/harness.ts";
-import { backlogAdd, backlogDecide, backlogDrop, backlogImport, HOUR, loopTick } from "../src/loop.ts";
+import { done, dutyTick, ready, Refusal, report, startLane } from "../src/harness.ts";
+import { backlogAdd, backlogDecide, backlogDrop, backlogImport, HOUR, importId, loopTick } from "../src/loop.ts";
 import type { Exec } from "../src/herdr.ts";
 import { World } from "./fake.ts";
 
@@ -52,11 +52,12 @@ describe("backlog", () => {
           { number: 13, title: "New billing", body: "", labels: [{ name: "dori" }, { name: "needs-decision" }] },
         ]) }
       : { code: 0, stdout: JSON.stringify({ state: argv[2] === "12" ? "CLOSED" : "OPEN" }) };
-    expect(await backlogImport(d, "acme/web-app", "dori", d.store.root)).toEqual(["web-app-12", "web-app-13"]);
+    expect(await backlogImport(d, "acme/web-app", "dori", d.store.root)).toEqual({ added: ["web-app-12", "web-app-13"], capped: false });
     expect(d.store.item("web-app-12")).toMatchObject({ priority: 1, source: "acme/web-app#12" });
     expect(readFileSync(d.store.item("web-app-12")!.brief, "utf8")).toContain("issues/12");
     expect(d.store.item("web-app-13")!.decision).toContain("needs-decision");
-    expect(await backlogImport(d, "acme/web-app", "dori", d.store.root)).toEqual([]);
+    expect(await backlogImport(d, "acme/web-app", "dori", d.store.root)).toEqual({ added: [], capped: false });
+    await expect(backlogImport(d, "other/web-app", "dori", d.store.root)).rejects.toThrow("already used by acme/web-app#12");
     const run = await loopTick(d);
     expect(run.synced).toEqual(["web-app-12 dropped (acme/web-app#12 closed)"]);
     expect(run.started).toEqual([]);
@@ -181,17 +182,19 @@ describe("hourly loop", () => {
     w.panes.get(busy.paneId)!.status = "working";
     w.panes.delete(gone.paneId);
     w.gh = () => ({ code: 0, stdout: JSON.stringify({ state: "OPEN" }) });
-    const lanesBefore = readdirSync(join(d.store.root, "lanes")).map((f) => readFileSync(join(d.store.root, "lanes", f), "utf8"));
 
     w.clock += 30 * 60_000;
     expect((await tick({ maxStarts: 0 })).findings).toEqual(["vanished pane " + gone.paneId + " is gone"]);
     w.clock += 4 * HOUR;
+    await dutyTick(d);
+    expect(d.store.lane("busy")!.lastActivityAt).toBe(w.clock);
+    const lanesBefore = readdirSync(join(d.store.root, "lanes")).map((f) => readFileSync(join(d.store.root, "lanes", f), "utf8"));
     const run = await tick({ maxStarts: 0 });
     expect(run.findings.sort()).toEqual([
+      "busy working, no report for 4h",
       "finished READY 4h ago, not closed: dori done finished",
       "fresh working, no report for 4h",
       "quiet working, no report for 4h",
-      `vanished pane ${gone.paneId} is gone`,
       "wait-ci waiting 4h on: WAITING: CI on acme/app#3",
     ]);
     const lanesAfter = readdirSync(join(d.store.root, "lanes")).map((f) => readFileSync(join(d.store.root, "lanes", f), "utf8"));
@@ -212,8 +215,8 @@ describe("hourly loop", () => {
     expect((await at(1)).started).toEqual(["pick-db (p5)"]);
   });
 
-  test("kill switch: a stopped loop does nothing at all; a live lock skips, a dead one is taken over", async () => {
-    const { d, lead, add, tick } = setup();
+  test("kill switch: a stopped loop does nothing at all; a live lock skips, a dead or corrupt one is taken over", async () => {
+    const { w, d, lead, add, tick } = setup();
     add("work");
     d.store.setStop(1, "maintenance");
     lead.received.length = 0;
@@ -224,11 +227,15 @@ describe("hourly loop", () => {
     expect(d.store.item("work")!.status).toBe("open");
     d.store.clearStop();
 
-    writeFileSync(d.store.loopPath("lock"), JSON.stringify({ pid: process.ppid, at: 0 }));
+    writeFileSync(d.store.loopPath("lock"), JSON.stringify({ pid: process.ppid, at: 0, nonce: "other" }));
     expect((await tick()).skipped).toBe(`locked by pid ${process.ppid}`);
-    writeFileSync(d.store.loopPath("lock"), JSON.stringify({ pid: 2147483647, at: 0 }));
+    expect(readFileSync(d.store.loopPath("lock"), "utf8")).toContain('"other"');
+    writeFileSync(d.store.loopPath("lock"), "{\"pid\": 12");
     expect((await tick()).started).toEqual(["work (p5)"]);
-    expect(readdirSync(join(d.store.root, "loop"))).not.toContain("lock");
+    writeFileSync(d.store.loopPath("lock"), JSON.stringify({ pid: 2147483647, at: 0, nonce: "dead" }));
+    w.clock += HOUR;
+    expect((await tick()).started).toEqual([]);
+    expect(readdirSync(join(d.store.root, "loop")).filter((f) => f.startsWith("lock"))).toEqual([]);
   });
 
   test("a failed lane start is recorded and stops pulling; with no lead nothing starts", async () => {
@@ -250,5 +257,68 @@ describe("hourly loop", () => {
     expect(quiet.held).toEqual(["no lead pane registered"]);
     expect(quiet.started).toEqual([]);
     expect(headless.d.store.runs()).toHaveLength(1);
+  });
+});
+
+describe("hardening", () => {
+  test("ids from the CLI cannot leave the backlog directory, and long imported ids stay valid and distinct", async () => {
+    const { d } = setup();
+    expect(() => backlogDecide(d, "../lanes/x", "yes")).toThrow(Refusal);
+    expect(() => backlogDrop(d, "../../etc", "x")).toThrow(Refusal);
+    const a = importId("acme/a-very-long-repository-name-that-keeps-going", 12345);
+    const b = importId("other/a-very-long-repository-name-that-keeps-going", 12345);
+    expect(a).toMatch(/^[a-z][a-z0-9-]{1,40}$/);
+    expect(a).not.toBe(b);
+    expect(importId("acme/web-app", 7)).toBe("web-app-7");
+  });
+
+  test("a running item whose lane record vanished is reopened, not marked done", async () => {
+    const { d, add, tick } = setup();
+    add("ghost");
+    await tick();
+    rmSync(join(d.store.root, "lanes", "ghost.json"));
+    const run = await tick();
+    expect(run.synced[0]).toBe("ghost reopened (lane record missing, attempt 1)");
+    expect(d.store.item("ghost")!.status).not.toBe("done");
+  });
+
+  test("a lane that opened but whose [START] could not reach the lead counts as started", async () => {
+    const { d, add, tick } = setup({
+      exec: (inner) => async (cmd, argv) =>
+        cmd === "herdr" && argv[0] === "agent" && argv[2] === "w1:p1" ? { code: 1, stdout: "", stderr: "lead pane hung" } : inner(cmd, argv),
+    });
+    add("solo");
+    const run = await tick({ maxStarts: 1 });
+    expect(run.started).toEqual(["solo (p5)"]);
+    expect(d.store.item("solo")!.status).toBe("running");
+    expect(run.findings.some((f) => f.startsWith("solo started in ") && f.includes("lead was not told"))).toBe(true);
+    expect(run.findings.some((f) => f.startsWith("report to the lead failed"))).toBe(true);
+    expect(d.store.lastRun()!.findings).toEqual(run.findings);
+  });
+
+  test("a loop that loses its lock mid-run starts nothing more and leaves the new holder's lock in place", async () => {
+    let home = "";
+    const { d, add, tick } = setup({
+      exec: (inner) => async (cmd, argv) => {
+        if (cmd === "herdr" && argv[0] === "tab") {
+          writeFileSync(join(home, "loop", "lock"), JSON.stringify({ pid: process.ppid, at: 0, nonce: "usurper" }));
+        }
+        return inner(cmd, argv);
+      },
+    });
+    home = d.store.root;
+    add("first");
+    add("second");
+    const run = await tick({ maxStarts: 2 });
+    expect(run.started).toEqual(["first (p5)"]);
+    expect(run.held).toContain("lock lost to another loop; no more starts this run");
+    expect(readFileSync(d.store.loopPath("lock"), "utf8")).toContain("usurper");
+  });
+
+  test("two runs in the same millisecond keep two records", async () => {
+    const { d, tick } = setup();
+    await tick();
+    await tick();
+    expect(d.store.runs()).toHaveLength(2);
   });
 });
