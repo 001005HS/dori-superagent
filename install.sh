@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Installs the dori-mode skill and the `dori` CLI.
-# Usage: curl -fsSL https://raw.githubusercontent.com/sisyphuslabs/omo-dori-mode-experimental/main/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/sisyphuslabs/dori-superharness-exp/main/install.sh | bash
 # Needs: git, bun 1.3+. Optional env: DORI_SRC (clone dir), SKILLS_DIR (where your agent loads skills).
 set -euo pipefail
 
-repo="https://github.com/sisyphuslabs/omo-dori-mode-experimental.git"
+repo="https://github.com/sisyphuslabs/dori-superharness-exp.git"
 src="${DORI_SRC:-$HOME/.dori/src}"
 skills="${SKILLS_DIR:-$HOME/.agents/skills}"
 

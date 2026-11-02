@@ -1,0 +1,139 @@
+import { describe, expect, test } from "bun:test";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { done, dutyTick, mergeGate, ready, Refusal, report, review, send, startLane } from "../src/harness.ts";
+import { World } from "./fake.ts";
+
+function setup() {
+  const w = new World();
+  const d = w.deps();
+  const lead = w.addPane("w1:p1", "idle");
+  d.store.setRole("lead", "w1:p1");
+  const brief = join(d.store.root, "brief.md");
+  writeFileSync(brief, "Fix the flaky login test.");
+  return { w, d, lead, brief };
+}
+
+describe("lanes", () => {
+  test("start opens a tab, launches omo with the brief, and tells the lead", async () => {
+    const { w, d, lead, brief } = setup();
+    const lane = await startLane(d, "fix-login", brief, { workspace: "w1" });
+    const pane = w.panes.get(lane.paneId)!;
+    expect(pane.ran[0]).toStartWith("omo 'Read your brief at ");
+    expect(await Bun.file(lane.brief).text()).toContain("dori ready fix-login --text");
+    expect(lead.received).toEqual([`[START fix-login] lane opened in ${lane.paneId}`]);
+    await expect(startLane(d, "fix-login", brief, { workspace: "w1" })).rejects.toThrow(Refusal);
+  });
+
+  test("ready requires evidence, then reaches the lead; done closes only a ready lane", async () => {
+    const { w, d, lead, brief } = setup();
+    const lane = await startLane(d, "fix-login", brief, { workspace: "w1" });
+    await expect(done(d, "fix-login")).rejects.toThrow("not ready");
+    await expect(ready(d, "fix-login", "fixed", [])).rejects.toThrow("evidence");
+    await ready(d, "fix-login", "fixed", ["https://github.com/o/r/pull/1"]);
+    expect(lead.received.at(-1)).toBe("[READY fix-login] fixed\nevidence: https://github.com/o/r/pull/1");
+    await done(d, "fix-login");
+    expect(w.panes.has(lane.paneId)).toBe(false);
+    expect(d.store.lane("fix-login")!.status).toBe("done");
+  });
+});
+
+describe("pane messaging", () => {
+  test("a busy lead is never interrupted: messages queue and arrive as one batch when it goes idle", async () => {
+    const { d, lead, brief } = setup();
+    await startLane(d, "a-lane", brief, { workspace: "w1" });
+    lead.received.length = 0;
+    lead.status = "working";
+    await report(d, "a-lane", "tests red, investigating");
+    expect(await send(d, "lead", "second note", "a-lane")).toBe("QUEUED");
+    expect(lead.received).toEqual([]);
+    lead.status = "idle";
+    const events = await dutyTick(d);
+    expect(events).toContainEqual({ pane: "w1:p1", action: "flushed" });
+    expect(lead.received).toHaveLength(1);
+    expect(lead.received[0]).toContain("2 messages arrived while you were busy");
+    expect(lead.received[0]).toContain("[REPORT a-lane] tests red, investigating");
+    expect(lead.received[0]).toContain("second note");
+  });
+
+  test("unknown targets are refused instead of guessed", async () => {
+    const { d } = setup();
+    await expect(send(d, "nobody", "hi", "cli")).rejects.toThrow("unknown target");
+  });
+});
+
+describe("duty loop", () => {
+  test("nudges an idle lane at 10 and 20 minutes, escalates at 40, and ignores WAITING lanes", async () => {
+    const { w, d, lead, brief } = setup();
+    const lane = await startLane(d, "quiet", brief, { workspace: "w1" });
+    const pane = w.panes.get(lane.paneId)!;
+    pane.status = "idle";
+    const at = async (min: number) => { w.clock = lane.createdAt + min * 60_000; return dutyTick(d); };
+    expect(await at(5)).toEqual([]);
+    expect(await at(10)).toContainEqual({ lane: "quiet", action: "nudge-1" });
+    expect(pane.received.at(-1)).toContain("idle for 10 minutes");
+    expect(await at(15)).toEqual([]);
+    expect(await at(20)).toContainEqual({ lane: "quiet", action: "nudge-2" });
+    expect(await at(40)).toContainEqual({ lane: "quiet", action: "escalated" });
+    expect(lead.received.at(-1)).toContain("[ESCALATE quiet]");
+    expect(await at(90)).toEqual([]);
+
+    const waiting = await startLane(d, "blocked-on-ci", brief, { workspace: "w1" });
+    w.panes.get(waiting.paneId)!.status = "idle";
+    await report(d, "blocked-on-ci", "WAITING: CI", "waiting");
+    w.clock += 60 * 60_000;
+    expect((await dutyTick(d)).filter((e) => e.lane === "blocked-on-ci")).toEqual([]);
+  });
+
+  test("a working lane counts as activity; a vanished pane is reported LOST", async () => {
+    const { w, d, lead, brief } = setup();
+    const lane = await startLane(d, "busy", brief, { workspace: "w1" });
+    w.panes.get(lane.paneId)!.status = "working";
+    w.clock += 30 * 60_000;
+    expect(await dutyTick(d)).toEqual([]);
+    expect(d.store.lane("busy")!.lastActivityAt).toBe(w.clock);
+    w.panes.delete(lane.paneId);
+    expect(await dutyTick(d)).toContainEqual({ lane: "busy", action: "lost" });
+    expect(lead.received.at(-1)).toContain("[LOST busy]");
+  });
+});
+
+describe("review + merge gate", () => {
+  const head = "a".repeat(40);
+  function gh(w: World, checks: unknown[]) {
+    w.gh = (argv) => {
+      if (argv[1] === "view") return { code: 0, stdout: JSON.stringify({ headRefOid: head }) };
+      if (argv[1] === "checks") return { code: 0, stdout: JSON.stringify(checks) };
+      if (argv[1] === "merge") return { code: 0, stdout: "" };
+      return { code: 1, stdout: "" };
+    };
+  }
+
+  test("merge is refused without a receipt, with an empty check list, with red checks; allowed at CLEAR + green", async () => {
+    const { w, d } = setup();
+    gh(w, []);
+    await expect(mergeGate(d, "o/r#7")).rejects.toThrow("no review receipt");
+    w.reviewer = () => ({ code: 0, stdout: "HIGH src/a.ts:3 ...\nVERDICT: BLOCK" });
+    expect((await review(d, "o/r#7")).verdict).toBe("BLOCK");
+    await expect(mergeGate(d, "o/r#7")).rejects.toThrow("is BLOCK");
+    w.reviewer = () => ({ code: 0, stdout: "no findings\nVERDICT: CLEAR" });
+    await review(d, "o/r#7", "some/model");
+    expect(d.store.receipt("o/r#7", head)!.model).toBe("some/model");
+    await expect(mergeGate(d, "o/r#7")).rejects.toThrow("never green");
+    gh(w, [{ name: "test", bucket: "fail" }, { name: "lint", bucket: "pass" }]);
+    await expect(mergeGate(d, "o/r#7")).rejects.toThrow("test=fail");
+    gh(w, [{ name: "test", bucket: "skipping" }]);
+    await expect(mergeGate(d, "o/r#7")).rejects.toThrow("every check was skipped");
+    gh(w, [{ name: "test", bucket: "pass" }, { name: "docs", bucket: "skipping" }]);
+    expect(await mergeGate(d, "o/r#7")).toBe(`MERGED o/r#7 head=${head}`);
+    expect(w.calls.at(-1)!.argv).toContain("--match-head-commit");
+  });
+
+  test("a reviewer without a VERDICT line writes no receipt", async () => {
+    const { w, d } = setup();
+    gh(w, []);
+    w.reviewer = () => ({ code: 0, stdout: "looks fine I guess" });
+    await expect(review(d, "o/r#8")).rejects.toThrow("no VERDICT");
+    expect(d.store.receipt("o/r#8", head)).toBeUndefined();
+  });
+});

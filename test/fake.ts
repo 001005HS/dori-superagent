@@ -1,0 +1,63 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { Deps } from "../src/harness.ts";
+import { Herdr, type AgentStatus, type Exec } from "../src/herdr.ts";
+import { Store } from "../src/store.ts";
+
+type Pane = { status: AgentStatus; received: string[]; ran: string[] };
+
+export class World {
+  panes = new Map<string, Pane>();
+  calls: { cmd: string; argv: readonly string[] }[] = [];
+  clock = 1_000_000;
+  next = 1;
+  gh: (argv: readonly string[]) => { code: number; stdout: string } = () => ({ code: 1, stdout: "" });
+  reviewer: (argv: readonly string[]) => { code: number; stdout: string } = () => ({ code: 0, stdout: "VERDICT: CLEAR" });
+
+  addPane(id: string, status: AgentStatus = "idle"): Pane {
+    const p = { status, received: [], ran: [] };
+    this.panes.set(id, p);
+    return p;
+  }
+
+  exec: Exec = async (cmd, argv) => {
+    this.calls.push({ cmd, argv });
+    if (cmd === "gh") return { ...this.gh(argv), stderr: "" };
+    if (cmd !== "herdr") return { ...this.reviewer(argv), stderr: "" };
+    const ok = (result: unknown) => ({ code: 0, stdout: JSON.stringify({ result }), stderr: "" });
+    const [group, verb, id] = argv;
+    if ((group === "tab" || group === "workspace") && verb === "create") {
+      const pane = `w1:p${++this.next}`;
+      this.addPane(pane, "shell");
+      return ok({ root_pane: { pane_id: pane, tab_id: `w1:t${this.next}`, workspace_id: "w1" } });
+    }
+    if (group === "pane" && verb === "split") {
+      const pane = `w1:p${++this.next}`;
+      this.addPane(pane, "shell");
+      return ok({ pane: { pane_id: pane, tab_id: "w1:t1", workspace_id: "w1" } });
+    }
+    const pane = id ? this.panes.get(id) : undefined;
+    if (!pane) return { code: 1, stdout: "", stderr: `pane_not_found ${id}` };
+    if (group === "pane" && verb === "get") {
+      return ok({ pane: { pane_id: id, agent: pane.status === "shell" ? null : "pi", agent_status: pane.status } });
+    }
+    if (group === "pane" && verb === "run") { pane.ran.push(String(argv[3])); return ok({}); }
+    if (group === "pane" && verb === "send-text") { pane.received.push(String(argv[3])); return ok({}); }
+    if (group === "pane" && verb === "send-keys") return ok({});
+    if (group === "agent" && verb === "prompt") { pane.received.push(String(argv[3])); return ok({}); }
+    if (group === "pane" && verb === "close") { this.panes.delete(id!); return ok({}); }
+    return { code: 1, stdout: "", stderr: `unhandled ${argv.join(" ")}` };
+  };
+
+  deps(): Deps {
+    return {
+      store: new Store(mkdtempSync(join(tmpdir(), "dori-test-"))),
+      herdr: new Herdr(this.exec, undefined),
+      exec: this.exec,
+      now: () => this.clock,
+      agentCmd: "omo",
+      doriCmd: "dori",
+    };
+  }
+}
