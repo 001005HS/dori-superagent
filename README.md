@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="skills/dori-mode/assets/dori-avatar.png" alt="Dori" width="120">
+</p>
+
 # dori-superharness-exp
 
 A proactive multi-session coding-agent harness in about 660 lines of TypeScript, running on [herdr](https://github.com/herdrdev/herdr) and [omo](https://github.com/code-yeongyu/oh-my-openagent).

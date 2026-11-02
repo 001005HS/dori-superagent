@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="skills/dori-mode/assets/dori-avatar.png" alt="Dori" width="120">
+</p>
+
 # dori-superharness-exp
 
 約 660 行の TypeScript で書いた、複数セッションを能動的に回すコーディングエージェント用ハーネスです。[herdr](https://github.com/herdrdev/herdr) と [omo](https://github.com/code-yeongyu/oh-my-openagent) の上で動きます。

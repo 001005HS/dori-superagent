@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="skills/dori-mode/assets/dori-avatar.png" alt="Dori" width="120">
+</p>
+
 # dori-superharness-exp
 
 약 660줄의 TypeScript로 만든, 여러 세션을 능동적으로 굴리는 코딩 에이전트 하네스입니다. [herdr](https://github.com/herdrdev/herdr)와 [omo](https://github.com/code-yeongyu/oh-my-openagent) 위에서 돌아갑니다.
