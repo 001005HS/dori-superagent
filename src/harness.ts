@@ -4,6 +4,7 @@ import { cpus, freemem, loadavg, totalmem } from "node:os";
 import { join, resolve } from "node:path";
 import { Herdr, shq, spawnExec, type AgentStatus, type Exec } from "./herdr.ts";
 import { KEY_RE, Store, type HostLoad, type Lane, type Role } from "./store.ts";
+import { Telemetry, type MergeOutcome, type Usage } from "./telemetry.ts";
 
 export { KEY_RE };
 
@@ -19,6 +20,7 @@ export type Deps = {
   readonly agentCmd: string;
   readonly doriCmd: string;
   readonly host: () => HostLoad;
+  readonly usage: Usage;
 };
 
 export const defaultDeps = (): Deps => {
@@ -31,6 +33,7 @@ export const defaultDeps = (): Deps => {
     agentCmd: process.env["DORI_AGENT_CMD"] ?? "omo",
     doriCmd: process.env["DORI_CMD"] ?? `DORI_HOME=${shq(store.root)} bun ${shq(CLI)}`,
     host: () => ({ load1: loadavg()[0] ?? 0, cores: cpus().length, memFreePct: memFreePct() }),
+    usage: new Telemetry(store.root),
   };
 };
 
@@ -142,6 +145,8 @@ export async function startLane(
   };
   d.store.saveLane(lane);
   await tellLead(d, `[START ${key}] lane opened in ${pane.paneId}`, key);
+  const open = d.store.lanes().filter((l) => l.status === "working" || l.status === "waiting").length;
+  d.usage.record({ name: "dori.lane_started", open_lanes: Math.min(open, 1000) });
   return lane;
 }
 
@@ -174,6 +179,11 @@ export async function ready(d: Deps, key: string, text: string, evidence: readon
   lane.log.push({ at: now, kind: "ready", text });
   d.store.saveLane(lane);
   await tellLead(d, `[READY ${key}] ${text}\nevidence: ${evidence.join(" ")}`, key);
+  d.usage.record({
+    name: "dori.lane_ready",
+    evidence_count: Math.min(evidence.length, 100),
+    lane_minutes: Math.min(Math.floor((now - lane.createdAt) / 60_000), 10_080),
+  });
 }
 
 export async function done(d: Deps, key: string): Promise<void> {
@@ -235,6 +245,15 @@ export async function dutyTick(d: Deps): Promise<DutyEvent[]> {
       events.push({ lane: lane.key, action: "escalated" });
     }
   }
+  const count = (pred: (a: string) => boolean) => events.filter((e) => pred(e.action)).length;
+  d.usage.touch();
+  d.usage.duty({
+    ticks: 1,
+    flushed: count((a) => a === "flushed"),
+    nudges: count((a) => a.startsWith("nudge-")),
+    escalations: count((a) => a === "escalated"),
+    lost: count((a) => a === "lost"),
+  });
   return events;
 }
 
@@ -272,6 +291,7 @@ export async function review(d: Deps, prId: string, model?: string): Promise<{ v
   if (!last) throw new Error("reviewer printed no VERDICT line; no receipt written");
   const verdict = last[1] as "CLEAR" | "BLOCK";
   d.store.saveReceipt({ pr: pr.id, sha, verdict, model: model ?? "default", at: d.now(), summary: res.stdout.trim().slice(-4000) });
+  d.usage.record({ name: "dori.review_completed", verdict });
   return { verdict, sha };
 }
 
@@ -281,18 +301,28 @@ type Check = { name: string; bucket: string };
 export async function mergeGate(d: Deps, prId: string, opts: { dryRun?: boolean } = {}): Promise<string> {
   const pr = parsePr(prId);
   const sha = await headSha(d, pr);
-  const receipt = d.store.receipt(pr.id, sha);
-  if (!receipt) throw new Refusal(`MERGE_REFUSED no review receipt at head ${sha.slice(0, 12)} (run: dori review ${pr.id})`);
-  if (receipt.verdict !== "CLEAR") throw new Refusal(`MERGE_REFUSED review at ${sha.slice(0, 12)} is ${receipt.verdict}`);
-  const checksRes = await d.exec("gh", ["pr", "checks", String(pr.number), "--repo", pr.repo, "--json", "name,bucket"]);
-  const checks: Check[] = checksRes.stdout.trim().startsWith("[") ? JSON.parse(checksRes.stdout) : [];
-  if (checks.length === 0) throw new Refusal("MERGE_REFUSED no checks reported: an empty check list is never green");
-  const bad = checks.filter((c) => c.bucket !== "pass" && c.bucket !== "skipping");
-  if (bad.length > 0) throw new Refusal(`MERGE_REFUSED checks not green: ${bad.map((c) => `${c.name}=${c.bucket}`).join(", ")}`);
-  if (!checks.some((c) => c.bucket === "pass")) throw new Refusal("MERGE_REFUSED every check was skipped");
+  const refused = await gateRefusal(d, pr, sha);
+  if (refused) {
+    if (!opts.dryRun) d.usage.record({ name: "dori.merge_decided", outcome: refused[0] });
+    throw new Refusal(`MERGE_REFUSED ${refused[1]}`);
+  }
   if (opts.dryRun) return `MERGE_OK ${pr.id} head=${sha} (dry run)`;
   await gh(d, ["pr", "merge", String(pr.number), "--repo", pr.repo, "--squash", "--match-head-commit", sha]);
+  d.usage.record({ name: "dori.merge_decided", outcome: "merged" });
   return `MERGED ${pr.id} head=${sha}`;
+}
+
+async function gateRefusal(d: Deps, pr: PrRef, sha: string): Promise<[MergeOutcome, string] | undefined> {
+  const receipt = d.store.receipt(pr.id, sha);
+  if (!receipt) return ["no_receipt", `no review receipt at head ${sha.slice(0, 12)} (run: dori review ${pr.id})`];
+  if (receipt.verdict !== "CLEAR") return ["review_block", `review at ${sha.slice(0, 12)} is ${receipt.verdict}`];
+  const checksRes = await d.exec("gh", ["pr", "checks", String(pr.number), "--repo", pr.repo, "--json", "name,bucket"]);
+  const checks: Check[] = checksRes.stdout.trim().startsWith("[") ? JSON.parse(checksRes.stdout) : [];
+  if (checks.length === 0) return ["no_checks", "no checks reported: an empty check list is never green"];
+  const bad = checks.filter((c) => c.bucket !== "pass" && c.bucket !== "skipping");
+  if (bad.length > 0) return ["checks_red", `checks not green: ${bad.map((c) => `${c.name}=${c.bucket}`).join(", ")}`];
+  if (!checks.some((c) => c.bucket === "pass")) return ["checks_all_skipped", "every check was skipped"];
+  return undefined;
 }
 
 export const ROLES: readonly Role[] = ["lead", "duty"];
