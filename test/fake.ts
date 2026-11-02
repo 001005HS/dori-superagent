@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Deps } from "../src/harness.ts";
 import { Herdr, type AgentStatus, type Exec } from "../src/herdr.ts";
-import { Store } from "../src/store.ts";
+import { Store, type HostLoad } from "../src/store.ts";
 import type { DutyCounts, TelemetryEvent, Usage } from "../src/telemetry.ts";
 
 type Pane = { status: AgentStatus; received: string[]; ran: string[] };
@@ -12,6 +12,7 @@ export class World {
   panes = new Map<string, Pane>();
   calls: { cmd: string; argv: readonly string[] }[] = [];
   clock = 1_000_000;
+  host: HostLoad = { load1: 1, cores: 8, memFreePct: 50 };
   next = 1;
   gh: (argv: readonly string[]) => { code: number; stdout: string } = () => ({ code: 1, stdout: "" });
   usage: TelemetryEvent[] = [];
@@ -68,6 +69,7 @@ export class World {
       now: () => this.clock,
       agentCmd: "omo",
       doriCmd: "dori",
+      host: () => this.host,
       usage: this.recorder,
     };
   }

@@ -72,3 +72,35 @@ test.skipIf(!herdrBin)("a lane started in real herdr reports and finishes, and t
   expect(await dori("status")).toMatch(/e2e-lane\s+ready/);
   expect(await dori("done", "e2e-lane")).toContain("DONE e2e-lane");
 }, 60_000);
+
+test.skipIf(!herdrBin)("the hourly loop starts a backlog item as a lane in real herdr and reports the run to the lead", async () => {
+  const ws = await herdr("workspace", "create", "--label", "e2e-loop", "--cwd", home, "--no-focus");
+  const lead = ws.root_pane.pane_id as string;
+  await herdr("pane", "run", lead, "cat");
+  await dori("role", "lead", lead);
+  const brief = join(home, "loop-brief.md");
+  writeFileSync(brief, "E2E-LOOP-BRIEF\n");
+  expect(await dori("backlog", "add", "loop-item", "--brief", brief, "--cwd", home, "--priority", "2")).toContain("ADDED loop-item p2");
+
+  const fake = resolve(import.meta.dir, "fixtures/fake-agent.sh");
+  const doriCmd = `DORI_HOME=${shq(home)} DORI_HERDR_SESSION=${session} DORI_TELEMETRY=0 bun ${shq(cli)}`;
+  const loop = Bun.spawn(["bun", cli, "loop", "--once", "--max-lanes", "5", "--max-load", "100000"], {
+    env: { ...env, HERDR_WORKSPACE_ID: ws.workspace.workspace_id, DORI_AGENT_CMD: `DORI_E2E_CMD=${shq(doriCmd)} ${shq(fake)}`, DORI_CMD: doriCmd },
+    stdout: "pipe", stderr: "pipe",
+  });
+  expect(await loop.exited).toBe(0);
+  expect(await new Response(loop.stdout).text()).toContain("LOOP started=1");
+
+  const leadText = await until("READY from the loop-started lane", async () => {
+    const r = await spawnExec("herdr", ["--session", session, "pane", "read", lead, "--lines", "80", "--source", "recent"]);
+    return r.stdout.includes("[READY loop-item]") ? r.stdout : undefined;
+  });
+  expect(leadText).toContain("[START loop-item]");
+  expect(leadText).toContain("[LOOP ");
+  expect(leadText).toContain("started: loop-item (p2)");
+  expect(await dori("backlog", "list")).toMatch(/loop-item\s+running/);
+  expect(await dori("loop", "status")).toContain("started: loop-item (p2)");
+  expect(await dori("loop", "stop", "--text", "e2e pause")).toContain("LOOP STOPPED");
+  expect(await dori("loop", "--once")).toContain("LOOP skipped: stopped: e2e pause");
+  expect(await dori("done", "loop-item")).toContain("DONE loop-item");
+}, 60_000);

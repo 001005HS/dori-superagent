@@ -1,11 +1,14 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { cpus, freemem, loadavg, totalmem } from "node:os";
 import { join, resolve } from "node:path";
 import { Herdr, shq, spawnExec, type AgentStatus, type Exec } from "./herdr.ts";
-import { Store, type Lane, type Role } from "./store.ts";
+import { KEY_RE, Store, type HostLoad, type Lane, type Role } from "./store.ts";
 import { Telemetry, type MergeOutcome, type Usage } from "./telemetry.ts";
 
+export { KEY_RE };
+
 export const NUDGE_MINUTES = [10, 20, 40] as const;
-const KEY_RE = /^[a-z][a-z0-9-]{1,40}$/;
 const PROMPTS = join(import.meta.dir, "..", "prompts");
 const CLI = resolve(import.meta.dir, "cli.ts");
 
@@ -16,6 +19,7 @@ export type Deps = {
   readonly now: () => number;
   readonly agentCmd: string;
   readonly doriCmd: string;
+  readonly host: () => HostLoad;
   readonly usage: Usage;
 };
 
@@ -28,11 +32,35 @@ export const defaultDeps = (): Deps => {
     now: Date.now,
     agentCmd: process.env["DORI_AGENT_CMD"] ?? "omo",
     doriCmd: process.env["DORI_CMD"] ?? `DORI_HOME=${shq(store.root)} bun ${shq(CLI)}`,
+    host: () => ({ load1: loadavg()[0] ?? 0, cores: cpus().length, memFreePct: memFreePct() }),
     usage: new Telemetry(store.root),
   };
 };
 
 export class Refusal extends Error {}
+
+const sysctlMemoryLevel = (): string => execFileSync("sysctl", ["-n", "kern.memorystatus_level"], { encoding: "utf8", timeout: 2000 });
+
+/**
+ * Percent of memory available to start new work. On Linux, os.freemem() is MemAvailable. On macOS it is only the
+ * truly free pages (inactive and cached pages excluded), which sits near 0-5% on a healthy Mac, so the kernel's own
+ * available-memory level (the figure behind Activity Monitor's memory pressure) is used there instead.
+ */
+export function memFreePct(
+  platform: string = process.platform,
+  readLevel: () => string = sysctlMemoryLevel,
+  freePct: () => number = () => Math.round((freemem() / totalmem()) * 100),
+): number {
+  if (platform === "darwin") {
+    try {
+      const level = Number(readLevel().trim());
+      if (Number.isFinite(level) && level >= 0 && level <= 100) return Math.round(level);
+    } catch {
+      // fall through to freemem(): a missing sysctl must not stop the loop from reading memory at all
+    }
+  }
+  return freePct();
+}
 
 const prompt = (name: string, vars: Record<string, string>): string =>
   readFileSync(join(PROMPTS, name), "utf8").replace(/\{\{(\w+)\}\}/g, (_, k: string) => vars[k] ?? `{{${k}}}`);
@@ -77,7 +105,7 @@ export async function flushInbox(d: Deps, paneId: string): Promise<boolean> {
   return true;
 }
 
-async function tellLead(d: Deps, text: string, from: string): Promise<void> {
+export async function tellLead(d: Deps, text: string, from: string): Promise<void> {
   if (!d.store.roles().lead) {
     process.stderr.write(`dori: no lead pane registered; message kept only in the lane log\n`);
     return;
@@ -95,7 +123,7 @@ export async function startLane(
 ): Promise<Lane> {
   if (!KEY_RE.test(key)) throw new Refusal(`lane key must match ${KEY_RE}`);
   const existing = d.store.lane(key);
-  if (existing && existing.status !== "done") throw new Refusal(`lane ${key} is already open in ${existing.paneId}`);
+  if (existing && existing.status !== "done" && existing.status !== "lost") throw new Refusal(`lane ${key} is already open in ${existing.paneId}`);
   const cwd = resolve(opts.cwd ?? process.cwd());
   const briefPath = d.store.briefPath(key);
   const footer = prompt("lane-footer.md", { key, dori: d.doriCmd });
