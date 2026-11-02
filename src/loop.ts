@@ -321,12 +321,14 @@ async function pull(d: Deps, run: LoopRun, maxLanes: number, maxStarts: number, 
     run.held.push(`host busy: load ${host.load1.toFixed(1)} (limit ${maxLoad ?? host.cores}), mem free ${host.memFreePct}%`);
     starts = 0;
   }
-  let i = 0;
-  for (; i < Math.min(starts, candidates.length); i++) {
-    const item = candidates[i]!;
+  // Each start attempt uses one of this run's slots, so a broken host costs at most `starts` failures per run.
+  // A failed item counts toward MAX_ATTEMPTS and then becomes a question, so it never blocks the items behind it.
+  let tried = 0;
+  for (; tried < Math.min(starts, candidates.length); tried++) {
+    const item = candidates[tried]!;
     if (!holds(d, nonce)) {
       run.held.push("lock lost to another loop; no more starts this run");
-      return;
+      break;
     }
     try {
       await startLane(d, item.id, item.brief, { cwd: item.cwd });
@@ -335,9 +337,10 @@ async function pull(d: Deps, run: LoopRun, maxLanes: number, maxStarts: number, 
       const lane = d.store.lane(item.id);
       if (!lane || !isOpenLane(lane.status) || lane.createdAt < run.at) {
         item.attempts += 1;
+        if (item.attempts >= MAX_ATTEMPTS) item.decision = `lane start failed ${item.attempts} times (${why.slice(0, 120)}); fix the brief or cwd, or drop?`;
         log(d, item, "start", `failed: ${why}`);
         run.findings.push(`start ${item.id} failed: ${why}`);
-        return;
+        continue;
       }
       run.findings.push(`${item.id} started in ${lane.paneId} but the lead was not told: ${why}`);
     }
@@ -345,9 +348,9 @@ async function pull(d: Deps, run: LoopRun, maxLanes: number, maxStarts: number, 
     log(d, item, "start", "lane opened by the hourly loop");
     run.started.push(`${item.id} (p${item.priority})`);
   }
-  const waiting = candidates.length - i;
+  const waiting = candidates.length - tried;
   if (waiting > 0) {
-    run.held.push(`${waiting} item(s) waiting: ${Math.max(0, maxLanes - open - i)} free of ${maxLanes} lanes, max ${maxStarts}/run`);
+    run.held.push(`${waiting} item(s) waiting: ${Math.max(0, maxLanes - open - run.started.length)} free of ${maxLanes} lanes, max ${maxStarts}/run`);
   }
 }
 
@@ -415,12 +418,12 @@ export async function loopTick(d: Deps, opts: LoopOpts = {}): Promise<LoopRun> {
       },
       host: d.host(),
     };
-    d.store.saveRun(run);
+    const record = d.store.saveRun(run);
     try {
       await tellLead(d, summary(run), "loop");
     } catch (e) {
       run.findings.push(`report to the lead failed: ${e instanceof Error ? e.message : String(e)}`);
-      writeFileSync(d.store.loopPath("last-run.json"), JSON.stringify(run, null, 2) + "\n");
+      d.store.saveRun(run, record);
     }
     return run;
   } finally {
@@ -428,8 +431,13 @@ export async function loopTick(d: Deps, opts: LoopOpts = {}): Promise<LoopRun> {
   }
 }
 
-/** How long to sleep so runs stay on the hour of the last stamp, instead of drifting after a restart. */
+/**
+ * How long to sleep: until the last stamp's next hour when that is still ahead (so runs keep their cadence after a
+ * restart), otherwise a full interval. A stopped, locked-out or failing loop writes no stamp, so it waits an interval
+ * between checks instead of spinning.
+ */
 export function msUntilNext(d: Deps, interval: number): number {
   const last = d.store.lastRun();
-  return Math.max(1000, (last ? last.at + interval : d.now() + interval) - d.now());
+  const due = last ? last.at + interval - d.now() : 0;
+  return due > 0 ? Math.max(1000, due) : interval;
 }

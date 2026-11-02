@@ -206,16 +206,19 @@ export class Store {
     return this.readJson(this.loopPath("last-run.json"));
   }
 
-  /** Writes the run record and the last-run stamp, keeping the newest KEEP_RUNS records. */
-  saveRun(run: LoopRun): void {
+  /** Writes the run record and the last-run stamp, keeping the newest KEEP_RUNS records. Pass `name` to rewrite a record. */
+  saveRun(run: LoopRun, name?: string): string {
     const dir = this.loopPath("runs");
-    const stem = new Date(run.at).toISOString().replaceAll(":", "-");
-    let name = `${stem}.json`;
-    for (let n = 2; existsSync(join(dir, name)); n++) name = `${stem}-${n}.json`;
+    if (name === undefined) {
+      const stem = new Date(run.at).toISOString().replaceAll(":", "-");
+      name = `${stem}.json`;
+      for (let n = 2; existsSync(join(dir, name)); n++) name = `${stem}-${n}.json`;
+    }
     this.writeJson(join(dir, name), run);
     this.writeJson(this.loopPath("last-run.json"), run);
     const files = readdirSync(dir).filter((f) => f.endsWith(".json")).sort();
     for (const f of files.slice(0, Math.max(0, files.length - KEEP_RUNS))) rmSync(join(dir, f), { force: true });
+    return name;
   }
 
   runs(): string[] {

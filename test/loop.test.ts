@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { done, dutyTick, ready, Refusal, report, startLane } from "../src/harness.ts";
-import { backlogAdd, backlogDecide, backlogDrop, backlogImport, HOUR, importId, loopTick, restore } from "../src/loop.ts";
+import { backlogAdd, backlogDecide, backlogDrop, backlogImport, HOUR, importId, loopTick, msUntilNext, restore } from "../src/loop.ts";
 import type { Exec } from "../src/herdr.ts";
 import { World } from "./fake.ts";
 
@@ -241,15 +241,20 @@ describe("hourly loop", () => {
     expect(readdirSync(join(d.store.root, "loop")).filter((f) => f.startsWith("lock"))).toEqual([]);
   });
 
-  test("a failed lane start is recorded and stops pulling; with no lead nothing starts", async () => {
+  test("failed lane starts are recorded, each uses a slot, and the run still reports what is waiting; with no lead nothing starts", async () => {
     const failing = setup({
       exec: (inner) => async (cmd, argv) => (cmd === "herdr" && argv[0] === "tab" ? { code: 1, stdout: "", stderr: "server down" } : inner(cmd, argv)),
     });
     failing.add("one");
     failing.add("two");
-    const run = await failing.tick();
+    failing.add("three");
+    const run = await failing.tick({ maxStarts: 2 });
     expect(run.started).toEqual([]);
-    expect(run.findings).toEqual([expect.stringContaining("start one failed: herdr tab create")]);
+    expect(run.findings).toEqual([
+      expect.stringContaining("start one failed: herdr tab create"),
+      expect.stringContaining("start three failed: herdr tab create"),
+    ]);
+    expect(run.held).toEqual(["1 item(s) waiting: 3 free of 3 lanes, max 2/run"]);
     expect(failing.d.store.item("one")).toMatchObject({ status: "open", attempts: 1 });
     expect(failing.d.store.lastRun()!.at).toBe(run.at);
     expect(readdirSync(join(failing.d.store.root, "loop"))).not.toContain("lock");
@@ -260,6 +265,34 @@ describe("hourly loop", () => {
     expect(quiet.held).toEqual(["no lead pane registered"]);
     expect(quiet.started).toEqual([]);
     expect(headless.d.store.runs()).toHaveLength(1);
+  });
+
+  test("an item whose start keeps failing becomes a question and stops blocking the items behind it", async () => {
+    const { w, d, lead, add } = setup();
+    add("broken", { priority: 1 });
+    add("healthy", { priority: 5 });
+    rmSync(d.store.item("broken")!.brief);
+    const hourly = async () => { w.clock += HOUR; return loopTick(d, { maxStarts: 1 }); };
+    expect((await hourly()).findings[0]).toStartWith("start broken failed");
+    const second = await hourly();
+    expect(second.findings[0]).toStartWith("start broken failed");
+    expect(d.store.item("broken")!.decision).toStartWith("lane start failed 2 times");
+    expect(second.asked[0]).toStartWith("[DECIDE broken] lane start failed 2 times");
+    expect((await hourly()).started).toEqual(["healthy (p5)"]);
+    expect(lead.received.some((m) => m.includes("[DECIDE broken]"))).toBe(true);
+  });
+
+  test("a stopped, locked-out or failing loop waits a full interval; a fresh stamp keeps the hourly cadence", async () => {
+    const { w, d, add, tick } = setup();
+    expect(msUntilNext(d, HOUR)).toBe(HOUR);
+    add("cadence");
+    await tick();
+    w.clock += 20 * 60_000;
+    expect(msUntilNext(d, HOUR)).toBe(40 * 60_000);
+    w.clock += 3 * HOUR;
+    d.store.setStop(w.clock, "pause");
+    expect((await loopTick(d)).skipped).toBe("stopped: pause");
+    expect(msUntilNext(d, HOUR)).toBe(HOUR);
   });
 });
 
@@ -297,6 +330,9 @@ describe("hardening", () => {
     expect(run.findings.some((f) => f.startsWith("solo started in ") && f.includes("lead was not told"))).toBe(true);
     expect(run.findings.some((f) => f.startsWith("report to the lead failed"))).toBe(true);
     expect(d.store.lastRun()!.findings).toEqual(run.findings);
+    const records = d.store.runs();
+    expect(records).toHaveLength(1);
+    expect(JSON.parse(readFileSync(d.store.loopPath(`runs/${records[0]}`), "utf8")).findings).toEqual(run.findings);
   });
 
   test("a loop that loses its lock mid-run starts nothing more and leaves the new holder's lock in place", async () => {
