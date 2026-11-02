@@ -184,7 +184,6 @@ export function otlpLogs(installHash: string, events: readonly TelemetryEvent[],
             logRecords: events.map(({ name, ...fields }) => ({
               timeUnixNano,
               eventName: name,
-              body: { stringValue: name },
               attributes: [
                 attr("log.record.uid", randomUUID()),
                 ...Object.entries(fields).map(([k, v]) => attr(`dori.${k}`, v as string | number)),

@@ -88,6 +88,7 @@ describe("telemetry", () => {
     expect(["darwin", "linux", "windows"]).toContain(resource["os.type"].stringValue);
     const rec = body.resourceLogs[0].scopeLogs[0].logRecords[0];
     expect(rec.eventName).toBe("dori.lane_ready");
+    expect(rec.body).toBeUndefined();
     expect(rec.timeUnixNano).toMatch(/^[0-9]+$/);
     const attrs = Object.fromEntries(rec.attributes.map((a: { key: string; value: unknown }) => [a.key, a.value]));
     expect(attrs["dori.evidence_count"]).toEqual({ intValue: "2" });
