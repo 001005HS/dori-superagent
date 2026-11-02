@@ -6,7 +6,8 @@ import { type Lane, statusOf } from "./registry.ts";
 
 export const lastReportLine = (screen: string, key: string): string | null => {
   const grammar = new RegExp(`\\[REPORT\\] ${key.replace(/[.]/g, "\\.")} \\| (milestone|blocker|question|done) \\| (?!<what)\\S`);
-  const hits = screen.split("\n").flatMap((l) => (grammar.test(l) ? [l.slice(l.indexOf("[REPORT]"))] : []));
+  const unfilled = /\$?\{[A-Za-z_][\w.]*\}/;
+  const hits = screen.split("\n").flatMap((l) => (grammar.test(l) && !unfilled.test(l) ? [l.slice(l.indexOf("[REPORT]"))] : []));
   return hits.at(-1)?.replace(/["'\])\s,]+$/, "") ?? null;
 };
 

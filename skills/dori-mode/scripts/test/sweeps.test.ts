@@ -3,7 +3,7 @@ import { mkdirSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { deadPaneTick, newDeadPaneState } from "../src/dead-panes.ts";
-import { freshnessTick } from "../src/freshness.ts";
+import { freshnessTick, lastReportLine } from "../src/freshness.ts";
 import { acquireSlot, releaseSlot } from "../src/heavy-slot.ts";
 import { guardTick } from "../src/host-guard.ts";
 import { adoptLane, launchLane, LaunchError } from "../src/launch.ts";
@@ -204,4 +204,12 @@ test("the session id is read from --session, then a child's environment, then th
   const listDir = () => ["2026-01-01T09-00-00-000Z_01a10000-0000-7000-8000-000000000000.jsonl", "2026-01-01T12-00-02-113Z_01a11440-ee81-7f90-b2ed-dcc7d51a0adf.jsonl"];
   const byStart = await resolveSession("w:p1", "/repo", table, { run: fake({ "ps eww": "bun mcp X=1", "ps -o lstart=": "Thu Jan  1 12:00:01 2026 GMT" }), sessionsDir: "/s", listDir });
   expect(byStart).toEqual({ id: "01a11440-ee81-7f90-b2ed-dcc7d51a0adf", via: "start-time", pid: 11 });
+});
+
+test("a [REPORT] template with an unfilled placeholder is source, not a report: the last emitted report wins (#22)", () => {
+  const emitted = "[REPORT] demo-lane | milestone | checks passed";
+  const screen = [emitted, 'print(f"[REPORT] demo-lane | milestone | {message}")', 'echo "[REPORT] demo-lane | milestone | ${message}"'].join("\n");
+  expect(lastReportLine(screen, "demo-lane")).toBe(emitted);
+  expect(lastReportLine('echo "[REPORT] demo-lane | done | ${message}"', "demo-lane")).toBeNull();
+  expect(lastReportLine("[REPORT] demo-lane | done | PR #12 merged", "demo-lane")).toBe("[REPORT] demo-lane | done | PR #12 merged");
 });
