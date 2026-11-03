@@ -1,9 +1,12 @@
+import { existsSync } from "node:fs";
+
 import { fill } from "./config.ts";
 import type { FlowDeps } from "./done-flow.ts";
 import { checkPausedLane } from "./pause.ts";
 import { readScreen, sendVerified } from "./panes.ts";
 import { type Lane, statusOf } from "./registry.ts";
 import { type Progress, ReportError, reportLine, Reports } from "./reports.ts";
+import { Supervision, type SupervisionResult } from "./supervision.ts";
 
 export const lastReportLine = (screen: string, key: string): string | null => {
   const grammar = new RegExp(`\\[REPORT\\] ${key.replace(/[.]/g, "\\.")} \\| (milestone|blocker|question|halted|done) \\| (?!<what)\\S`);
@@ -66,7 +69,7 @@ export const anchoredReportLine = (screen: string, key: string): string | null =
   );
 
 export type SweepAct = {
-  readonly kind: "nudged" | "posted" | "no-report" | "pending-report" | "stale-report" | "working-while-paused" | "stalled" | "journal-error";
+  readonly kind: "nudged" | "posted" | "no-report" | "pending-report" | "stale-report" | "working-while-paused" | "stalled" | "journal-error" | "blocked" | "warning" | "supervision-error";
   readonly lane: string;
   readonly detail: string;
 };
@@ -77,6 +80,7 @@ export const freshnessTick = async (deps: FlowDeps, home: string): Promise<Sweep
   const acts: SweepAct[] = [];
   const now = deps.clock.now();
   const reports = new Reports(deps.config.stateDir);
+  const supervision = new Supervision({ ...deps, stateDir: deps.config.stateDir, reports }, deps.config.supervision);
   for (const lane of await deps.registry.open()) {
     if (statusOf(lane) === "paused") {
       const checked = await checkPausedLane(deps, lane);
@@ -91,10 +95,36 @@ export const freshnessTick = async (deps: FlowDeps, home: string): Promise<Sweep
     // Only launched lanes report through the journal; an adopted lane keeps the screen path even if a record exists.
     let previous: Progress | null = null;
     let progress: Progress | null = null;
+    let supervisedHung = false;
+    // The lane as last written here, so a later write keeps the recorded supervision error.
+    let latest: Lane = lane;
     if (lane.reportProtocol === "jsonl-v1") {
       try {
         previous = reports.read(lane.key);
-        progress = previous ? reports.observe(lane.key, await readScreen(deps.run, lane.pane), now, deps.config.nudgeAfterMin * 60_000) : null;
+        const screen = await readScreen(deps.run, lane.pane);
+        let supervised: SupervisionResult | null = null;
+        try {
+          // A launched lane is supervised once its journal exists; without one there is no progress to judge.
+          if (existsSync(reports.path(lane.key))) supervised = await supervision.sweep(lane, screen);
+        } catch (error) {
+          // Supervision is advisory: its failure is printed once per reason, and the lane's reports still flow.
+          const detail = error instanceof Error ? error.message : String(error);
+          if (detail !== lane.lastSupervisionError) {
+            acts.push({ kind: "supervision-error", lane: lane.key, detail });
+            latest = { ...lane, lastSupervisionError: detail };
+            await deps.registry.write(latest);
+          }
+        }
+        if (supervised && lane.lastSupervisionError) {
+          latest = { ...lane, lastSupervisionError: undefined };
+          await deps.registry.write(latest);
+        }
+        for (const detail of supervised?.alerts ?? []) {
+          acts.push({ kind: supervised?.state === "blocked" ? "blocked" : supervised?.state === "stalled" ? "stalled" : "warning", lane: lane.key, detail });
+        }
+        // Only supervision's own hung result replaces the stall line below; a usage warning is not a stall.
+        supervisedHung = supervised?.hung ?? false;
+        progress = reports.observe(lane.key, screen, now, deps.config.nudgeAfterMin * 60_000, !supervised?.hung);
       } catch (error) {
         // One corrupt journal skips its own lane, printed once per error, and never ends the sweep for the others.
         if (!(error instanceof ReportError)) throw error;
@@ -106,7 +136,7 @@ export const freshnessTick = async (deps: FlowDeps, home: string): Promise<Sweep
         continue;
       }
     }
-    if (progress?.state === "stalled" && previous?.state !== "stalled") {
+    if (progress?.state === "stalled" && previous?.state !== "stalled" && !supervisedHung) {
       acts.push({ kind: "stalled", lane: lane.key, detail: progress.lastEvent.text });
     }
     if (progress?.state === "stalled") continue;
@@ -114,7 +144,7 @@ export const freshnessTick = async (deps: FlowDeps, home: string): Promise<Sweep
     const running = !progress || progress.state === "running";
     const heard = Math.max(lastHeard(lane), progress?.lastReport ? Date.parse(progress.lastReport.at) : 0);
     const silentMin = Math.round((now - heard) / 60_000);
-    let current = lane;
+    let current = latest;
     if (running && silentMin >= deps.config.nudgeAfterMin && (current.lastNudgeAt ?? 0) < heard) {
       const delivery = await sendVerified(deps.run, deps.clock, lane.pane, `[LEAD] your work thread has had no update for ${silentMin} min. Post a 1-2 sentence progress line (done since last, next) and keep its status true.`);
       current = { ...current, lastNudgeAt: now };
