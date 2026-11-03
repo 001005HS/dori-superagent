@@ -41,14 +41,19 @@ const SHELLS: ReadonlySet<string> = new Set([
 ]);
 const baseName = (value: unknown): string => String(value ?? "").replace(/^-/, "").split("/").pop()!.toLowerCase();
 // A shell runs a command (not a prompt) only with an explicit command flag: -c, also inside combined short flags such
-// as -lc, or PowerShell's -Command/-File/-EncodedCommand. Any other operand (a script path, --rcfile FILE, -o OPT) stays held.
+// as -lc, or PowerShell's -Command/-File/-EncodedCommand (whole words only: its other long flags contain a 'c'). Any other operand (a script path, --rcfile FILE, -o OPT) stays held.
 const runsCommand = (shell: string, arg: string): boolean =>
-  /^-[A-Za-z]*c[A-Za-z]*$/.test(arg) || ((shell === "pwsh" || shell === "powershell") && /^-(command|file|f|encodedcommand|ec|e)$/i.test(arg));
+  shell === "pwsh" || shell === "powershell"
+    ? /^-(c|command|f|file|e|ec|encodedcommand)$/i.test(arg)
+    : /^-[A-Za-z]*c[A-Za-z]*$/.test(arg);
+// PowerShell's -NoExit keeps an interactive prompt after the command runs, so that shell is held.
+const keepsPrompt = (shell: string, arg: string): boolean => (shell === "pwsh" || shell === "powershell") && /^-(noe|noexit)$/i.test(arg);
 
 /**
  * True when `herdr pane process-info` shows an interactive shell in the pane's foreground group, or cannot be read.
  * herdr still reports an agent suspended with Ctrl+Z as idle while its shell is in front (#66); a shell running a
- * command (`sh -c ...`, `bash script.sh`) is the agent's child and does not count. Same rule as dori's src/herdr.ts.
+ * command flag (`sh -c ...`) is the agent's child and does not count; any other shell, `bash script.sh` included,
+ * is held. Same rule as dori's src/herdr.ts.
  */
 export const shellInFront = async (run: Runner, pane: string): Promise<boolean> => {
   try {
@@ -62,7 +67,7 @@ export const shellInFront = async (run: Runner, pane: string): Promise<boolean> 
       if (name === "busybox" && args && args.length > 0) [name, args] = [baseName(args[0]), args.slice(1)];
       if (!SHELLS.has(name)) continue;
       if (args === undefined) return true;
-      if (!args.some((a) => runsCommand(name, a))) return true;
+      if (!args.some((a) => runsCommand(name, a)) || args.some((a) => keepsPrompt(name, a))) return true;
     }
     return false;
   } catch (e) {
