@@ -120,22 +120,42 @@ test("a quiet lane with no [REPORT] line logs NO-REPORT once, not on every tick"
   expect(await freshnessTick(deps(T0 + 31 * MIN), "/home/test")).toEqual([]);
 });
 
-test("launch reports STARTUP_OK only on a ready agent status; a blank pane is unconfirmed, a known failure is an error", async () => {
+test("launch reports STARTUP_OK only on a ready agent status that shows a goal; a blank pane is unconfirmed, a known failure is an error", async () => {
   const brief = join(state.dir, "brief.md");
-  const run = async (status: string | undefined, screen: string, key: string) => {
+  // A status list is returned one per lookup, the last one repeating.
+  let waits = 0;
+  const run = async (status: string | undefined | (string | undefined)[], screen: string | string[], key: string, patch: { goalMarker?: string } = {}) => {
+    const statuses = Array.isArray(status) ? [...status] : [status];
     writeFileSync(brief, "# brief\n");
     world = newWorld();
-    world.screen = screen;
-    const base = depsFor(world, fakeClock(T0), state.dir);
+    if (Array.isArray(screen)) world.screens = [...screen];
+    else world.screen = screen;
+    waits = 0;
+    const base = depsFor(world, { ...fakeClock(T0), sleep: async () => void waits++ }, state.dir, patch);
     const inner = base.run;
     const deps = { ...base, run: async (argv: readonly string[]) => {
       if (argv[0] === "herdr" && argv[1] === "tab" && argv[2] === "create") return { code: 0, out: JSON.stringify({ result: { root_pane: { pane_id: "w:p9" }, tab_id: "w:t9" } }), err: "" };
-      if (argv[0] === "herdr" && argv[1] === "pane" && argv[2] === "list") return { code: 0, out: JSON.stringify({ result: { panes: [{ pane_id: "w:p9", workspace_id: "w", ...(status ? { agent: "pi", agent_status: status } : {}) }] } }), err: "" };
+      if (argv[0] === "herdr" && argv[1] === "pane" && argv[2] === "list") {
+        const s = statuses.length > 1 ? statuses.shift() : statuses[0];
+        return { code: 0, out: JSON.stringify({ result: { panes: [{ pane_id: "w:p9", workspace_id: "w", ...(s ? { agent: "pi", agent_status: s } : {}) }] } }), err: "" };
+      }
       return inner(argv);
     } };
     return (await launchLane(deps, { key, title: "t", brief, done: "closed acme/app#3" })).startup;
   };
-  expect(await run("idle", "❯ ", "ok-lane")).toBe("STARTUP_OK ok-lane w:p9");
+  const goal = "❯ \n Pursuing goal (1m)";
+  expect(await run("idle", goal, "ok-lane")).toBe("STARTUP_OK ok-lane w:p9");
+  expect(await run("working", ["❯ ", "❯ ", "❯ ", goal], "slow-goal-lane")).toBe("STARTUP_OK slow-goal-lane w:p9");
+  expect(await run("idle", "❯ ", "no-goal-lane")).toStartWith("STARTUP_NO_GOAL no-goal-lane w:p9");
+  expect(await run("idle", ["❯ ", "❯ ", "usage limit reached\n❯ "], "limit-lane")).toBe("STARTUP_ERROR limit-lane w:p9: usage limit");
+  // A working agent has not failed: its own output may quote the failure phrases (here, while it reads launch.ts).
+  expect(await run("working", ["❯ ", "read launch.ts: /usage limit|rate limit|quota/\n❯ ", `read launch.ts: /usage limit|rate limit|quota/\n${goal}`], "quoting-lane")).toBe("STARTUP_OK quoting-lane w:p9");
+  expect(await run("idle", `grep: ui.js returns "Pursuing goal" while active\n${"output\n".repeat(4)}❯ \n model • 10K`, "quoted-goal-lane")).toStartWith("STARTUP_NO_GOAL quoted-goal-lane w:p9");
+  expect(await run(["idle", "done"], ["❯ ", goal], "stopped-lane")).toStartWith("STARTUP_UNCONFIRMED stopped-lane w:p9");
+  // The marker is config, since the agent is: another agent's goal line counts, and an empty marker turns the wait off.
+  expect(await run("idle", "❯ \n goal: ship the fix", "other-agent-lane", { goalMarker: "goal:" })).toBe("STARTUP_OK other-agent-lane w:p9");
+  expect(await run("idle", "❯ ", "no-marker-lane", { goalMarker: "" })).toBe("STARTUP_OK no-marker-lane w:p9");
+  expect(waits).toBe(1);
   expect(await run(undefined, "", "blank-lane")).toStartWith("STARTUP_UNCONFIRMED blank-lane w:p9");
   expect(await run(undefined, "Error: provider refused the key\n$ ", "worded-lane")).toStartWith("STARTUP_UNCONFIRMED worded-lane w:p9");
   expect(await run("idle", "No API key found\n❯ ", "err-lane")).toBe("STARTUP_ERROR err-lane w:p9: No API key");
