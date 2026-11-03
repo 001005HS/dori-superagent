@@ -6,7 +6,7 @@ import { shellQuote } from "./launch.ts";
 import { listPanes, type Pane } from "./panes.ts";
 import type { Slack } from "./messenger/slack.ts";
 import { type Lane, statusOf } from "./registry.ts";
-import { type ProgressState, Reports } from "./reports.ts";
+import { type ProgressState, ReportError, Reports } from "./reports.ts";
 
 export type PaneState = "live" | "vanished" | "unassigned";
 export type Monitor = {
@@ -35,6 +35,7 @@ export type BootDeps = Pick<FlowDeps, "run" | "registry" | "config" | "clock"> &
   readonly slackDeadlineMs?: number;
 };
 
+// The one definition of a finished lane, shared by the VANISHED filter and the cleanup check.
 const finished = (lane: BootLane): boolean => ["closed", "verified-done"].includes(statusOf(lane)) || lane.reportState === "done";
 
 /** The boot Slack step: auth.test through the given client, or null (skipped) when no token is configured. */
@@ -189,9 +190,12 @@ export const bootCheck = async (deps: BootDeps): Promise<{ exitCode: number; lin
       else if (progress) journals.push(`NO-REPORT ${lane.key} state=${progress.state} registryStatus=${statusOf(lane)} (journal holds harness activity only)`);
       else journals.push(`NO-REPORT ${lane.key} registryStatus=${statusOf(lane)} (no journal)`);
     } catch (e) {
-      // Any unreadable journal is that lane's error; the other lanes are still checked.
+      // Any unreadable journal is that lane's error; the other lanes are still checked. The message can carry a local
+      // path, so only the error kind is printed.
       failed = true;
-      journals.push(`JOURNAL-ERROR ${lane.key}: ${e instanceof Error ? e.message : String(e)}`);
+      const code = (e as NodeJS.ErrnoException | null)?.code;
+      const kind = e instanceof ReportError ? "invalid-journal" : typeof code === "string" && /^[A-Z0-9_]+$/.test(code) ? code : "unreadable";
+      journals.push(`JOURNAL-ERROR ${lane.key} kind=${kind}`);
       lanes.push(lane);
     }
   }
@@ -206,8 +210,9 @@ export const bootCheck = async (deps: BootDeps): Promise<{ exitCode: number; lin
   if (panes) {
     const result = reconcilePanes(lanes, panes);
     const lead = deps.config.leadPane;
-    // A closed or verified-done lane is finished with its pane; only the others are worth flagging.
-    const vanished = result.lanes.filter((lane) => lane.paneState === "vanished" && lane.status !== "closed" && lane.status !== "verified-done");
+    // A finished lane (closed, verified-done, or a done journal) is done with its pane, as in cleanup; only the others are worth flagging.
+    const done = new Set(lanes.filter(finished).map((lane) => lane.key));
+    const vanished = result.lanes.filter((lane) => lane.paneState === "vanished" && !done.has(lane.key));
     lines.push(`PANES lead=${lead || "unconfigured"} leadState=${panes.some((p) => p.pane_id === lead) ? "live" : "missing"} registeredLive=${result.lanes.filter((l) => l.paneState === "live" && l.status !== "closed").length} vanished=${vanished.length} unregistered=${result.unregistered.length}`);
     for (const lane of vanished) lines.push(`VANISHED ${lane.key} pane=${lane.pane} status=${lane.status}; registry and worktrees preserved; no relaunch`);
     if (result.unregistered.length) lines.push(`UNREGISTERED ${result.unregistered.join(" ")}`);

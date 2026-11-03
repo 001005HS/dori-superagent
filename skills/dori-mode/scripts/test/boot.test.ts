@@ -222,6 +222,24 @@ test("a verified-done lane whose pane is gone is not flagged VANISHED", async ()
   expect(result.lines).toContain("PANES lead=w2:p1 leadState=live registeredLive=0 vanished=1 unregistered=1");
 });
 
+test("a journal-done lane whose pane is gone is finished in both checks: not VANISHED, and its watch is offered for cleanup", async () => {
+  // Given a working lane whose journal says done, on a pane that no longer exists, with a persistent watch naming it.
+  const world = newWorld();
+  world.panes = [{ pane_id: "w2:p1", workspace_id: "w2" }];
+  const deps = bootDeps(world);
+  await deps.registry.write(launched("reported", "working", "w1:p9"));
+  deps.reports.report("reported", "done", "finished", T0);
+  const terminal = join(deps.sessionsDir, "lead", "extensions", "terminal");
+  mkdirSync(terminal, { recursive: true });
+  writeFileSync(join(terminal, "owner.json"), JSON.stringify(manifest([{ command: "dori watch reported", monitorId: "mon_REPORTED" }]).data));
+  // When boot runs; then the lane is not flagged and its watch is a cleanup candidate.
+  const result = await bootCheck(deps);
+  expect(result.lines.some((l) => l.startsWith("VANISHED"))).toBe(false);
+  expect(result.lines).toContain("PANES lead=w2:p1 leadState=live registeredLive=0 vanished=0 unregistered=1");
+  expect(result.lines).toContain("MONITORS cleanupCandidates=1 deliveryPaused=0 expired=0 (from metadata; liveness unverified)");
+  expect(result.lines).toContain("STOP in the owner session only: kill_bash({\"bash_id\":\"mon_REPORTED\"})");
+});
+
 test("a failed pane list stays unknown instead of declaring every lane vanished", async () => {
   // Given herdr failing to list panes.
   const world = newWorld();
@@ -292,9 +310,10 @@ test("a corrupt journal is reported for its lane and does not stop the check", a
   await deps.registry.write(launched("broken"));
   deps.reports.report("broken", "milestone", "started", T0);
   writeFileSync(deps.reports.path("broken"), `${readFileSync(deps.reports.path("broken"), "utf8")}{partial\n`);
-  // When boot runs; then the lane is named, the rest still runs, and the exit is incomplete.
+  // When boot runs; then the lane is named with the error kind and no local path, the rest still runs, and the exit is incomplete.
   const result = await bootCheck(deps);
-  expect(result.lines.some((l) => l.startsWith("JOURNAL-ERROR broken:"))).toBe(true);
+  expect(result.lines).toContain("JOURNAL-ERROR broken kind=invalid-journal");
+  expect(result.lines.join("\n")).not.toContain(state.dir);
   expect(result.lines.at(-1)).toBe("BOOT incomplete read-only; nothing restarted, written or stopped");
   expect(result.exitCode).toBe(1);
 });
@@ -349,7 +368,8 @@ test("an unreadable journal of any kind is that lane's error; the other lanes ar
   deps.reports.report("b-healthy", "blocker", "needs the owner", T0);
   // When boot runs; then both lanes are listed and the run finishes incomplete.
   const result = await bootCheck(deps);
-  expect(result.lines.some((l) => l.startsWith("JOURNAL-ERROR a-broken:"))).toBe(true);
+  expect(result.lines).toContain("JOURNAL-ERROR a-broken kind=EISDIR");
+  expect(result.lines.join("\n")).not.toContain(state.dir);
   expect(result.lines).toContain("REPORT b-healthy kind=blocker at=2026-01-01T12:00:00.000Z state=blocked registryStatus=working");
   expect(result.lines.at(-1)).toBe("BOOT incomplete read-only; nothing restarted, written or stopped");
   expect(result.exitCode).toBe(1);
