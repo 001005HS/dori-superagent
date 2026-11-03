@@ -118,6 +118,10 @@ describe("interactiveShellInFront (#66: a suspended agent leaves its shell in fr
     ["login shell running a command: -lc", [{ name: "bash", argv: ["bash", "-lc", "make"] }], false],
     ["pwsh -File", [{ name: "pwsh", argv: ["pwsh", "-File", "x.ps1"] }], false],
     ["bash -f (noglob) is still interactive", [{ name: "bash", argv: ["bash", "-f"] }], true],
+    ["bash --init-file F", [{ name: "bash", argv: ["bash", "--init-file", "/tmp/rc"] }], true],
+    ["fish -C cmd (init command, still interactive)", [{ name: "fish", argv: ["fish", "-C", "set x 1"] }], true],
+    ["bash -ic cmd runs a command", [{ name: "bash", argv: ["bash", "-ic", "make"] }], false],
+    ["pwsh -EncodedCommand", [{ name: "pwsh", argv: ["pwsh", "-EncodedCommand", "ZQBjAGgAbwA="] }], false],
     ["pwsh -Command", [{ name: "pwsh", argv: ["pwsh", "-Command", "ls"] }], false],
     ["exec'd agent", [{ name: "bun", argv: ["bun", "omo.js"] }], false],
   ] as const)("%s", (_, procs, want) => {

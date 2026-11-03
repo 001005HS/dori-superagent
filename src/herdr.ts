@@ -54,9 +54,9 @@ const SHELLS: ReadonlySet<string> = new Set([
 ]);
 const baseName = (value: unknown): string => String(value ?? "").replace(/^-/, "").split("/").pop()!.toLowerCase();
 // A shell runs a command (not a prompt) only with an explicit command flag: -c, also inside combined short flags such
-// as -lc, or PowerShell's -Command/-File. Any other operand (a script path, --rcfile FILE, -o OPT) stays held.
+// as -lc, or PowerShell's -Command/-File/-EncodedCommand. Any other operand (a script path, --rcfile FILE, -o OPT) stays held.
 const runsCommand = (shell: string, arg: string): boolean =>
-  /^-[A-Za-z]*c[A-Za-z]*$/.test(arg) || ((shell === "pwsh" || shell === "powershell") && /^-(command|file|f)$/i.test(arg));
+  /^-[A-Za-z]*c[A-Za-z]*$/.test(arg) || ((shell === "pwsh" || shell === "powershell") && /^-(command|file|f|encodedcommand|ec|e)$/i.test(arg));
 
 /**
  * True when `pane process-info` shows an interactive shell in the pane's foreground process group, or cannot be read.
