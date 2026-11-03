@@ -170,6 +170,22 @@ test("a pane with no running agent is a bare shell: nothing is typed, the send f
   expect(world.calls.filter((c) => c[2] === "send-text" || c[2] === "send-keys")).toHaveLength(0);
 });
 
+test("an agent suspended with Ctrl+Z is still reported idle, but the shell is in front: nothing is typed", async () => {
+  world.panes = [{ pane_id: "w:p1", workspace_id: "w", agent: "opencode", agent_status: "idle", foreground: "-zsh" }];
+  expect(await sendVerified(at(T0).run, at(T0).clock, "w:p1", "[LEAD] please report")).toBe("failed");
+  expect(world.calls.filter((c) => c[2] === "send-text" || c[2] === "send-keys")).toHaveLength(0);
+});
+
+test("an agent with a non-interactive sh -c child in front is delivered to; an empty foreground group is doubt", async () => {
+  world.panes = [{ pane_id: "w:p1", workspace_id: "w", agent: "pi", agent_status: "idle", foreground: [{ name: "pi", argv: ["pi"] }, { name: "sh", argv: ["sh", "-c", "true"] }] }];
+  world.onEnterStatus = "working";
+  expect(await sendVerified(at(T0).run, at(T0).clock, "w:p1", "[LEAD] one")).toBe("delivered");
+  world.panes = [{ pane_id: "w:p1", workspace_id: "w", agent: "pi", agent_status: "idle", foreground: [] }];
+  const before = world.calls.filter((c) => c[2] === "send-text").length;
+  expect(await sendVerified(at(T0).run, at(T0).clock, "w:p1", "[LEAD] two")).toBe("failed");
+  expect(world.calls.filter((c) => c[2] === "send-text").length).toBe(before);
+});
+
 test("a failed pane lookup is doubt: nothing is typed, the send fails", async () => {
   const deps = at(T0);
   const typed: (readonly string[])[] = [];

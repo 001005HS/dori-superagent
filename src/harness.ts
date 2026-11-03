@@ -248,7 +248,7 @@ export async function dutyTick(d: Deps): Promise<DutyEvent[]> {
       const result = await flushInbox(d, paneId);
       if (result === "delivered") events.push({ pane: paneId, action: "flushed" });
       if (result === "no-agent") {
-        events.push({ pane: paneId, action: "inbox-held", detail: `no agent running; ${d.store.queued(paneId).length} message(s) kept` });
+        events.push({ pane: paneId, action: "inbox-held", detail: `no agent in front; ${d.store.queued(paneId).length} message(s) kept` });
       }
     } catch (e) {
       // One pane's failed delivery must never kill the loop for every other pane and lane.

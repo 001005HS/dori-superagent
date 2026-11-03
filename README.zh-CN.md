@@ -138,7 +138,7 @@ dori done fix-flaky-login            # closes the lane's pane; only a READY lane
 
 READY 必须带证据。没有至少一个 `--evidence` 链接，或者没有最终答案文本，`dori ready` 就会拒绝（`src/harness.ts` 里的 `ready()`）。文本和链接作为 `final` 存在 lane 记录上；`dori done` 拒绝任何状态不是 `ready` 的 lane，所以没有哪条 lane 能在没留下答案的情况下关闭。
 
-忙碌的窗格不会被打断。`dori send` 先向 herdr 查询窗格里 Agent 的状态。`idle` 或 `done` 立刻收到消息；其他状态下消息进入 `~/.dori/inbox/` 排队，命令打印 `QUEUED`。没有 Agent 在运行的窗格（Agent 已退出，只剩 shell）绝不会被输入文字，因为输入到 shell 的文字会被当作命令执行：发给它的消息留在队列里，duty 循环会打印 `inbox-held`，直到窗格里重新有 Agent。确实要往普通 shell 里输入时，由操作者加上 `--to-shell`：只对这一条消息生效，不会作用于队列里的消息。等窗格空闲下来，duty 循环把队列合成一条消息送达，开头是 "N messages arrived while you were busy"（`src/harness.ts` 里的 `send()` 和 `flushInbox()`）。`dori done` 也是同样的等法：herdr 报告为 working 或 blocked 的窗格，它拒绝关闭。
+忙碌的窗格不会被打断。`dori send` 先向 herdr 查询窗格里 Agent 的状态。`idle` 或 `done` 立刻收到消息；其他状态下消息进入 `~/.dori/inbox/` 排队，命令打印 `QUEUED`。前台没有 Agent 在运行的窗格（Agent 已退出，或被 Ctrl+Z 挂起，shell 回到前台）绝不会被输入文字，因为输入到 shell 的文字会被当作命令执行：发给它的消息留在队列里，duty 循环会打印 `inbox-held`，直到窗格里重新有 Agent。确实要往普通 shell 里输入时，由操作者加上 `--to-shell`：只对这一条消息生效，不会作用于队列里的消息。等窗格空闲下来，duty 循环把队列合成一条消息送达，开头是 "N messages arrived while you were busy"（`src/harness.ts` 里的 `send()` 和 `flushInbox()`）。`dori done` 也是同样的等法：herdr 报告为 working 或 blocked 的窗格，它拒绝关闭。
 
 10 分钟、20 分钟催，40 分钟上报。`src/harness.ts` 里有 `NUDGE_MINUTES = [10, 20, 40]`。一条 lane 10 分钟没有汇报、窗格也不在 working，就会在自己的窗格里收到 `prompts/nudge.md`；20 分钟时再收一次；到 40 分钟，duty 循环不再催，改为给 lead 发 `[ESCALATE <key>]`。`working` 状态的窗格会重置空闲计时；汇报过 `--status waiting` 或窗格处于 `blocked` 的 lane 不会被打扰；任何一次新汇报都把催促次数清零；窗格消失则报告为 `[LOST <key>]`。
 

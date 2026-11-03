@@ -31,7 +31,7 @@ describe("a pane whose agent is not running is never typed into (#66)", () => {
     const { w, d } = setup();
     const shell = w.addPane("w1:p7", "shell");
     expect(await send(d, "w1:p7", "touch /tmp/x", "cli")).toBe("QUEUED");
-    expect(await dutyTick(d)).toContainEqual({ pane: "w1:p7", action: "inbox-held", detail: "no agent running; 1 message(s) kept" });
+    expect(await dutyTick(d)).toContainEqual({ pane: "w1:p7", action: "inbox-held", detail: "no agent in front; 1 message(s) kept" });
     expect(keystrokes(w, "w1:p7")).toEqual([]);
     expect(shell.received).toEqual([]);
     expect(d.store.queued("w1:p7").map((m) => m.text)).toEqual(["touch /tmp/x"]);
@@ -68,6 +68,60 @@ describe("a pane whose agent is not running is never typed into (#66)", () => {
     expect(await send(d, "w1:p7", "rm -rf nothing", "cli")).toBe("QUEUED");
     expect(keystrokes(w, "w1:p7")).toEqual([]);
     expect(d.store.queued("w1:p7").map((m) => m.text)).toEqual(["rm -rf nothing"]);
+  });
+});
+
+describe("an agent suspended with Ctrl+Z: herdr still says idle, but the shell is in front", () => {
+  test("nothing is typed or prompted, the message stays queued and the duty loop holds it", async () => {
+    const { w, d } = setup();
+    const pane = w.addPane("w1:p7", "idle");
+    pane.foreground = "-bash";
+    expect(await send(d, "w1:p7", "touch /tmp/x", "cli")).toBe("QUEUED");
+    expect(await dutyTick(d)).toContainEqual({ pane: "w1:p7", action: "inbox-held", detail: "no agent in front; 1 message(s) kept" });
+    expect(keystrokes(w, "w1:p7")).toEqual([]);
+    expect(w.calls.filter((c) => c.argv[0] === "agent" && c.argv[2] === "w1:p7")).toEqual([]);
+    expect(pane.received).toEqual([]);
+  });
+
+  test("typed fallback: the shell comes to the front before typing -> QUEUED, 0 keystrokes", async () => {
+    const { w, d } = setup();
+    const pane = w.addPane("w1:p7", "idle");
+    w.promptFails.set("w1:p7", '{"error":{"code":"agent_not_ready"}}');
+    w.getHook.set("w1:p7", (n) => { if (n >= 2) pane.foreground = "/usr/bin/zsh"; });
+    expect(await send(d, "w1:p7", "rm -rf nothing", "cli")).toBe("QUEUED");
+    expect(keystrokes(w, "w1:p7")).toEqual([]);
+  });
+
+  test("a failed process lookup is doubt: queued, nothing typed", async () => {
+    const { w, d, lead } = setup();
+    w.processInfoFails = true;
+    expect(await send(d, "lead", "hello", "cli")).toBe("QUEUED");
+    expect(lead.received).toEqual([]);
+  });
+
+  test("an agent running a non-interactive `sh -c` child in its foreground group still gets its messages", async () => {
+    const { w, d, lead } = setup();
+    lead.foreground = [{ name: "omo", argv: ["omo"] }, { name: "sh", argv: ["sh", "-c", "sleep 300; true"] }, { name: "bash", argv: ["bash", "tool.sh"] }];
+    expect(await send(d, "lead", "hello", "cli")).toBe("DELIVERED");
+    expect(lead.received).toEqual(["hello"]);
+  });
+
+  test("an interactive shell anywhere in the foreground group, or an empty group, holds delivery", async () => {
+    const { w, d, lead } = setup();
+    lead.foreground = [{ name: "omo", argv: ["omo"] }, { name: "/bin/ZSH", argv: ["/bin/zsh", "-i"] }];
+    expect(await send(d, "lead", "one", "cli")).toBe("QUEUED");
+    lead.foreground = [];
+    expect(await send(d, "lead", "two", "cli")).toBe("QUEUED");
+    expect(lead.received).toEqual([]);
+    expect(keystrokes(w, "w1:p1")).toEqual([]);
+  });
+
+  test("an agent in front, including one started with exec, still gets its messages", async () => {
+    const { w, d, lead } = setup();
+    lead.foreground = "bun";
+    expect(await send(d, "lead", "hello", "cli")).toBe("DELIVERED");
+    expect(lead.received).toEqual(["hello"]);
+    expect(keystrokes(w, "w1:p1")).toEqual([]);
   });
 });
 

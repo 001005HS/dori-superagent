@@ -49,6 +49,30 @@ export function omoScreenIdle(screen: string): boolean {
   return lines.length - 1 - (input + 1) <= FOOTER_MAX_LINES;
 }
 
+const SHELLS: ReadonlySet<string> = new Set([
+  "sh", "ash", "bash", "zsh", "fish", "dash", "ksh", "mksh", "tcsh", "csh", "nu", "elvish", "xonsh", "pwsh", "powershell", "busybox",
+]);
+const baseName = (value: unknown): string => String(value ?? "").replace(/^-/, "").split("/").pop()!.toLowerCase();
+
+/**
+ * True when `pane process-info` shows an interactive shell in the pane's foreground process group, or cannot be read.
+ * An agent suspended with Ctrl+Z is still reported `idle` by herdr while its shell is in front (#66). A shell that runs
+ * a command (`sh -c ...`, `bash script.sh`) is an agent's child, not a prompt, and does not count.
+ */
+export function interactiveShellInFront(processInfo: unknown): boolean {
+  const procs = (processInfo as { foreground_processes?: unknown } | undefined)?.foreground_processes;
+  if (!Array.isArray(procs) || procs.length === 0) return true;
+  for (const proc of procs as { name?: unknown; argv?: unknown }[]) {
+    let name = baseName(proc?.name);
+    let args = Array.isArray(proc?.argv) ? proc.argv.map(String).slice(1) : undefined;
+    if (name === "busybox" && args && args.length > 0) [name, args] = [baseName(args[0]), args.slice(1)];
+    if (!SHELLS.has(name)) continue;
+    if (args === undefined) return true;
+    if (!args.some((a) => a === "-c" || /^-command$/i.test(a) || !a.startsWith("-"))) return true;
+  }
+  return false;
+}
+
 export type PaneRef = { readonly paneId: string; readonly tabId: string; readonly workspaceId: string };
 
 export class Herdr {
@@ -111,6 +135,7 @@ export class Herdr {
    * shell runs as a command (#66), so the caller keeps the message queued.
    */
   async deliver(paneId: string, text: string): Promise<boolean> {
+    if (await this.shellInForeground(paneId)) return false;
     try {
       await this.call(["agent", "prompt", paneId, text]);
       return true;
@@ -122,7 +147,7 @@ export class Herdr {
       // agent_not_ready also covers an agent that exited and left a shell in front: typing would run the text there.
       // Re-read right before typing (#66): only a pane that still has an agent gets keystrokes.
       const st = await this.status(paneId);
-      if (st === "shell" || st === "gone") return false;
+      if (st === "shell" || st === "gone" || (await this.shellInForeground(paneId))) return false;
       // A multi-line paste swallows the Enter that follows it, so type the message as one line.
       await this.call(["pane", "send-text", paneId, text.trim().replace(/\s*\n\s*/g, " / ")]);
       await Bun.sleep(PASTE_SETTLE_MS);
@@ -135,6 +160,17 @@ export class Herdr {
           if (attempt >= ENTER_ATTEMPTS) throw err;
         }
       }
+    }
+  }
+
+  /** See interactiveShellInFront. A failed or unreadable lookup is doubt: it holds delivery and says so on stderr. */
+  async shellInForeground(paneId: string): Promise<boolean> {
+    try {
+      return interactiveShellInFront((await this.call(["pane", "process-info", "--pane", paneId]))["process_info"]);
+    } catch (e) {
+      const reason = e instanceof HerdrError ? (e.result.stderr || e.result.stdout).trim() : String(e);
+      process.stderr.write(`dori: herdr pane process-info failed for ${paneId} (${reason}); holding delivery\n`);
+      return true;
     }
   }
 

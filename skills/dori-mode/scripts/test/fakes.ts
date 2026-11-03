@@ -18,7 +18,8 @@ export type World = {
   isGitRepo?: string;
   stuckReads: number;
   screen: string;
-  panes: { pane_id: string; workspace_id: string; agent?: string; agent_status?: string; title?: string; cwd?: string }[];
+  /** `foreground` is what `pane process-info` reports in front; defaults to the agent, or `-bash` for a pane with no agent. */
+  panes: { pane_id: string; workspace_id: string; agent?: string; agent_status?: string; title?: string; cwd?: string; foreground?: string | { name: string; argv: string[] }[] }[];
   /** agent_status the target pane moves to when Enter is pressed (models a lane picking up the message). */
   onEnterStatus?: string;
   /** Screens returned by successive reads; falls back to `screen` when empty. */
@@ -47,6 +48,13 @@ export const fakeRunner = (w: World): Runner => async (argv) => {
     return ok();
   }
   if (cmd === "herdr" && a1 === "pane" && a2 === "list") return ok(JSON.stringify({ result: { panes: w.panes } }));
+  if (cmd === "herdr" && a1 === "pane" && a2 === "process-info") {
+    const p = w.panes.find((x) => x.pane_id === argv[4]);
+    if (!p) return { code: 1, out: "", err: "pane_not_found" };
+    const fg = p.foreground ?? p.agent ?? (p.agent_status ? "agent" : "-bash");
+    const procs = typeof fg === "string" ? [{ name: fg, argv: [fg] }] : fg;
+    return ok(JSON.stringify({ result: { process_info: { pane_id: p.pane_id, shell_pid: 100, foreground_process_group_id: 101, foreground_processes: procs.map((x, i) => ({ ...x, pid: 101 + i })) } } }));
+  }
   if (cmd === "herdr") return ok();
   if (cmd === "git" && argv.includes("worktree") && argv.includes("list")) return ok(w.worktreeList ?? `worktree /repo\nbranch refs/heads/main\n\nworktree ${WT}\nbranch refs/heads/demo-lane`);
   if (cmd === "git" && argv.includes("rev-parse") && argv.includes("--is-inside-work-tree")) return ok(w.isGitRepo ?? "true");

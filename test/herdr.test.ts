@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Herdr, HerdrError, shq, type Exec, type ExecResult } from "../src/herdr.ts";
+import { Herdr, HerdrError, interactiveShellInFront, shq, type Exec, type ExecResult } from "../src/herdr.ts";
 
 // A recorder in place of the herdr binary: every argv is kept, and each reply is chosen per call.
 function recorder(reply: (argv: readonly string[]) => ExecResult = () => ok({})) {
@@ -48,11 +48,11 @@ describe("herdr argv", () => {
   });
 
   test("a message is one argv element, delivered verbatim: quotes, $(...) and newlines are never expanded", async () => {
-    const r = recorder();
+    const r = recorder((argv) => ok(argv[1] === "process-info" ? { process_info: { foreground_processes: [{ name: "omo", argv: ["omo"] }] } } : {}));
     const h = new Herdr(r.exec, "");
     const text = `it's "done" $(rm -rf ~) \`id\`\nline two`;
     expect(await h.deliver("w1:p1", text)).toBe(true);
-    expect(r.calls).toEqual([["agent", "prompt", "w1:p1", text]]);
+    expect(r.calls).toEqual([["pane", "process-info", "--pane", "w1:p1"], ["agent", "prompt", "w1:p1", text]]);
   });
 });
 
@@ -100,5 +100,27 @@ describe("shq", () => {
       const proc = Bun.spawn(["sh", "-c", `printf %s ${shq(s)}`], { stdout: "pipe" });
       expect(await new Response(proc.stdout).text()).toBe(s);
     }
+  });
+});
+
+describe("interactiveShellInFront (#66: a suspended agent leaves its shell in front)", () => {
+  const front = (...procs: { name?: string; argv?: string[] }[]) => interactiveShellInFront({ foreground_processes: procs });
+  test.each([
+    ["login shell", [{ name: "-bash", argv: ["-bash"] }], true],
+    ["interactive zsh by path, upper case", [{ name: "/bin/ZSH", argv: ["/bin/zsh", "-i"] }], true],
+    ["bash -C (noclobber) is still interactive", [{ name: "bash", argv: ["bash", "-C"] }], true],
+    ["busybox sh applet", [{ name: "busybox", argv: ["busybox", "sh"] }], true],
+    ["shell entry without argv", [{ name: "fish" }], true],
+    ["agent with a sh -c child", [{ name: "omo", argv: ["omo"] }, { name: "sh", argv: ["sh", "-c", "sleep 1"] }], false],
+    ["shell running a script", [{ name: "bash", argv: ["bash", "tool.sh"] }], false],
+    ["pwsh -Command", [{ name: "pwsh", argv: ["pwsh", "-Command", "ls"] }], false],
+    ["exec'd agent", [{ name: "bun", argv: ["bun", "omo.js"] }], false],
+  ] as const)("%s", (_, procs, want) => {
+    expect(front(...(procs as unknown as { name?: string; argv?: string[] }[]))).toBe(want);
+  });
+  test("an empty or missing process list is doubt", () => {
+    expect(interactiveShellInFront({ foreground_processes: [] })).toBe(true);
+    expect(interactiveShellInFront({})).toBe(true);
+    expect(interactiveShellInFront(undefined)).toBe(true);
   });
 });
