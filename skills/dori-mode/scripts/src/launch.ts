@@ -8,6 +8,7 @@ import { iso } from "./run.ts";
 import { Reports } from "./reports.ts";
 import { doneSyntaxErrors } from "./signals.ts";
 import type { BudgetLimits } from "./supervision.ts";
+import { Lessons, renderLessons } from "./lessons.ts";
 
 export type LaunchInput = {
   readonly key: string;
@@ -48,9 +49,26 @@ export const shellQuote = (s: string): string => (/^[\w@%+=:,./-]+$/.test(s) ? s
 export const cliCommand = (path: string = fileURLToPath(new URL("./cli.ts", import.meta.url))): string => `bun ${shellQuote(path)}`;
 const CLI = cliCommand();
 
+const FOOTER_HEADING = "## Lane footer (written by dori launch)";
+const BRIEF_START = "<!-- dori launch: the brief starts below -->";
+const FOOTER_START = "<!-- dori launch: footer start -->";
+const FOOTER_END = "<!-- dori launch: footer end -->";
+
+// startLane writes the launch text over the brief before the tab exists, so a retry after a failed tab create reads a
+// brief that already has lessons and a footer. Rebuild from the text between the markers launch wrote, so a retry ships
+// what a first launch would. Only a file that ends with launch's footer is cut: the owner's text may quote the heading.
+const originalBrief = (text: string): string => {
+  const brief = text.replace(/\s*$/, "");
+  const foot = brief.endsWith(FOOTER_END) ? brief.lastIndexOf(`\n${FOOTER_START}\n`) : -1;
+  if (foot === -1) return brief;
+  const start = brief.indexOf(`${BRIEF_START}\n`);
+  return brief.slice(start === -1 || start > foot ? 0 : start + BRIEF_START.length + 1, foot).replace(/\s*$/, "");
+};
+
 export const footer = (lane: Lane, leadPane: string, identities: DoriConfig["repoIdentities"] = {}): string => [
   "",
-  "## Lane footer (written by dori launch)",
+  FOOTER_START,
+  FOOTER_HEADING,
   `- Key: ${lane.key}. Work thread: ${lane.thread}.`,
   `- Done = ${lane.done}. The lane closes only when every signal reads back live.`,
   `- Persist each milestone, blocker, question, halt and completion with ${CLI} report ${lane.key} --kind milestone|blocker|question|halted|done --text "what, with evidence links". It appends reports.jsonl and prints the human [REPORT] line; send that line to pane ${leadPane || "(lead pane)"} as an argv array, never a shell string.`,
@@ -63,6 +81,7 @@ export const footer = (lane: Lane, leadPane: string, identities: DoriConfig["rep
   `- On resume, run ${CLI} checkpoints ${lane.key} before doing work. Never repeat a recorded remote side effect. If a crash may have happened between the remote action and checkpoint, read the live remote receipt first and use the service's idempotency key; a local journal cannot make that remote action atomic.`,
   `- Supervision ceilings: ${JSON.stringify(lane.budget ?? {})}. A breach marks blocked and alerts; it never kills the agent. Report a blocker and wait for the lead's decision rather than overriding the ceiling.`,
   `- When done: ${CLI} claim-done ${lane.key} --evidence "<merge SHA, closed issue, version>". See references/done-protocol.md.`,
+  FOOTER_END,
   "",
 ].join("\n");
 
@@ -73,7 +92,7 @@ export const adoptLane = async (deps: FlowDeps, input: LaunchInput & { readonly 
   return lane;
 };
 
-export const launchLane = async (deps: FlowDeps, input: LaunchInput): Promise<{ readonly lane: Lane; readonly startup: string }> => {
+export const prepareLaunch = async (deps: FlowDeps, input: LaunchInput): Promise<{ readonly lane: Lane; readonly preamble: string; readonly warnings: string[] }> => {
   await validateLaunch(deps, input);
   const model = input.model ?? deps.config.defaultModel;
   const cwd = input.cwd ?? deps.config.defaultCwd;
@@ -89,7 +108,20 @@ export const launchLane = async (deps: FlowDeps, input: LaunchInput): Promise<{ 
     },
     activityPaths: input.activityPaths ?? [],
   };
-  await Bun.write(input.brief, `${(await briefFile.text()).replace(/\s*$/, "")}\n${footer(draft, deps.config.leadPane, deps.config.repoIdentities)}`);
+  // A damaged journal line is a warning: it must not keep a lane from starting or hide the lessons around it.
+  const { lessons, problems } = new Lessons(deps.config.stateDir).forRepo(cwd);
+  return { lane: draft, warnings: problems.map((problem) => `LESSON_WARNING ${problem}`), preamble: `${renderLessons(lessons)}${BRIEF_START}\n${originalBrief(await briefFile.text())}\n${footer(draft, deps.config.leadPane, deps.config.repoIdentities)}` };
+};
+
+export const launchLane = async (deps: FlowDeps, input: LaunchInput): Promise<{ readonly lane: Lane; readonly startup: string; readonly warnings: string[] }> => {
+  const prepared = await prepareLaunch(deps, input);
+  return { ...(await startLane(deps, input, prepared.lane, prepared.preamble)), warnings: prepared.warnings };
+};
+
+const startLane = async (deps: FlowDeps, input: LaunchInput, draft: Lane, preamble: string): Promise<{ readonly lane: Lane; readonly startup: string }> => {
+  const model = input.model ?? deps.config.defaultModel;
+  const cwd = input.cwd ?? deps.config.defaultCwd;
+  await Bun.write(input.brief, preamble);
   const created = await deps.run(["herdr", "tab", "create", ...(deps.config.laneWorkspace ? ["--workspace", deps.config.laneWorkspace] : []), "--cwd", cwd, "--label", input.key, "--no-focus"]);
   if (created.code !== 0) throw new LaunchError(`herdr tab create failed: ${created.err || created.out}`);
   const made = (JSON.parse(created.out) as { result: { root_pane: { pane_id: string; tab_id?: string }; tab_id?: string } }).result;
