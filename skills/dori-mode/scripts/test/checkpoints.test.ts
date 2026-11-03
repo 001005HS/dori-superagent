@@ -129,10 +129,11 @@ describe("checkpoints", () => {
 
   test("a live writer in another process holds the lock; the next writer is refused, then writes once it is released", async () => {
     const state = withState();
+    // Write before the holder starts: a write racing the holder's lock attempt can make the holder lose it and exit.
+    const journal = new Checkpoints(state.dir);
+    journal.write("demo-lane", input, Date.now());
     const { proc, locked } = holder(state.dir);
     try {
-      const journal = new Checkpoints(state.dir);
-      journal.write("demo-lane", input, Date.now());
       await locked;
       const before = readFileSync(journal.path("demo-lane"), "utf8");
       expect(() => journal.write("demo-lane", next, Date.now())).toThrow(`writer locked: demo-lane (pid ${proc.pid}`);
