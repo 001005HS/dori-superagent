@@ -63,7 +63,7 @@ Arm these as persistent monitors in your own session:
 
 | Monitor | Command | Filter |
 |---|---|---|
-| inbound messages | your messenger's watch command | new owner messages |
+| inbound messages | Slack: the Slack inbound row below. Telegram: no shipped command yet (#74). Other messengers: their CLI's watch command, if it has one | new owner messages |
 | done flow | `dori watch` | `^LANE_` |
 | dead panes | `dori dead-panes --loop 3` | `^(DEAD_PANE\|UNRECOGNISED_PANE)` |
 | host guard | `dori guard --loop 1` | `^HOST_GUARD` |
