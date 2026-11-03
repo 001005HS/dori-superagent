@@ -101,7 +101,7 @@ describe("an agent suspended with Ctrl+Z: herdr still says idle, but the shell i
 
   test("an agent running a non-interactive `sh -c` child in its foreground group still gets its messages", async () => {
     const { w, d, lead } = setup();
-    lead.foreground = [{ name: "omo", argv: ["omo"] }, { name: "sh", argv: ["sh", "-c", "sleep 300; true"] }, { name: "bash", argv: ["bash", "tool.sh"] }];
+    lead.foreground = [{ name: "omo", argv: ["omo"] }, { name: "sh", argv: ["sh", "-c", "sleep 300; true"] }, { name: "bash", argv: ["bash", "-lc", "make test"] }];
     expect(await send(d, "lead", "hello", "cli")).toBe("DELIVERED");
     expect(lead.received).toEqual(["hello"]);
   });

@@ -53,6 +53,10 @@ const SHELLS: ReadonlySet<string> = new Set([
   "sh", "ash", "bash", "zsh", "fish", "dash", "ksh", "mksh", "tcsh", "csh", "nu", "elvish", "xonsh", "pwsh", "powershell", "busybox",
 ]);
 const baseName = (value: unknown): string => String(value ?? "").replace(/^-/, "").split("/").pop()!.toLowerCase();
+// A shell runs a command (not a prompt) only with an explicit command flag: -c, also inside combined short flags such
+// as -lc, or PowerShell's -Command/-File. Any other operand (a script path, --rcfile FILE, -o OPT) stays held.
+const runsCommand = (shell: string, arg: string): boolean =>
+  /^-[A-Za-z]*c[A-Za-z]*$/.test(arg) || ((shell === "pwsh" || shell === "powershell") && /^-(command|file|f)$/i.test(arg));
 
 /**
  * True when `pane process-info` shows an interactive shell in the pane's foreground process group, or cannot be read.
@@ -68,7 +72,7 @@ export function interactiveShellInFront(processInfo: unknown): boolean {
     if (name === "busybox" && args && args.length > 0) [name, args] = [baseName(args[0]), args.slice(1)];
     if (!SHELLS.has(name)) continue;
     if (args === undefined) return true;
-    if (!args.some((a) => a === "-c" || /^-command$/i.test(a) || !a.startsWith("-"))) return true;
+    if (!args.some((a) => runsCommand(name, a))) return true;
   }
   return false;
 }

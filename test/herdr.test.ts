@@ -112,7 +112,12 @@ describe("interactiveShellInFront (#66: a suspended agent leaves its shell in fr
     ["busybox sh applet", [{ name: "busybox", argv: ["busybox", "sh"] }], true],
     ["shell entry without argv", [{ name: "fish" }], true],
     ["agent with a sh -c child", [{ name: "omo", argv: ["omo"] }, { name: "sh", argv: ["sh", "-c", "sleep 1"] }], false],
-    ["shell running a script", [{ name: "bash", argv: ["bash", "tool.sh"] }], false],
+    ["shell running a script is held, the safe side", [{ name: "bash", argv: ["bash", "tool.sh"] }], true],
+    ["interactive bash with --rcfile FILE", [{ name: "bash", argv: ["bash", "--rcfile", "/tmp/rc"] }], true],
+    ["interactive zsh with -o OPT", [{ name: "zsh", argv: ["zsh", "-o", "vi"] }], true],
+    ["login shell running a command: -lc", [{ name: "bash", argv: ["bash", "-lc", "make"] }], false],
+    ["pwsh -File", [{ name: "pwsh", argv: ["pwsh", "-File", "x.ps1"] }], false],
+    ["bash -f (noglob) is still interactive", [{ name: "bash", argv: ["bash", "-f"] }], true],
     ["pwsh -Command", [{ name: "pwsh", argv: ["pwsh", "-Command", "ls"] }], false],
     ["exec'd agent", [{ name: "bun", argv: ["bun", "omo.js"] }], false],
   ] as const)("%s", (_, procs, want) => {
