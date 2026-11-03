@@ -80,30 +80,45 @@ export function resolveTarget(d: Deps, target: string): string {
   throw new Refusal(`unknown target ${target}: not a pane id, role or open lane`);
 }
 
-const READY_TO_READ: readonly AgentStatus[] = ["idle", "done", "shell"];
+// A pane with no running agent (`shell`) is never ready: text typed into a bare shell runs as a command (#66).
+const READY_TO_READ: readonly AgentStatus[] = ["idle", "done"];
 
 /** Delivers now when the pane can read; otherwise queues it for the duty loop (busy agents are never interrupted). */
 export async function send(d: Deps, target: string, text: string, from: string): Promise<"DELIVERED" | "QUEUED"> {
   const paneId = resolveTarget(d, target);
   d.store.enqueue(paneId, { at: d.now(), from, text });
-  return (await flushInbox(d, paneId)) ? "DELIVERED" : "QUEUED";
+  return (await flushInbox(d, paneId)) === "delivered" ? "DELIVERED" : "QUEUED";
 }
 
-export async function flushInbox(d: Deps, paneId: string): Promise<boolean> {
+/**
+ * `dori send --to-shell`: the operator's per-message opt-in to type this one message into a pane with no agent.
+ * Only the CLI flag reaches here, never relayed content, and queued messages are never typed with it. If an agent
+ * is in the pane, or appears before typing, the message takes the queued agent path instead.
+ */
+export async function sendToShell(d: Deps, target: string, text: string, from: string): Promise<"DELIVERED" | "QUEUED"> {
+  const paneId = resolveTarget(d, target);
+  if ((await d.herdr.status(paneId)) !== "shell") return send(d, target, text, from);
+  if (await d.herdr.typeIntoShell(paneId, text)) return "DELIVERED";
+  d.store.enqueue(paneId, { at: d.now(), from, text });
+  return "QUEUED";
+}
+
+export async function flushInbox(d: Deps, paneId: string): Promise<"delivered" | "queued" | "no-agent"> {
   const queued = d.store.queued(paneId);
-  if (queued.length === 0) return true;
+  if (queued.length === 0) return "delivered";
   let status = await d.herdr.status(paneId);
   if (status === "gone") throw new Refusal(`pane ${paneId} is gone; ${queued.length} message(s) kept in its inbox`);
   if (status === "working" && (await screenShowsIdle(d, paneId))) status = "idle";
-  if (!READY_TO_READ.includes(status)) return false;
+  if (status === "shell") return "no-agent";
+  if (!READY_TO_READ.includes(status)) return "queued";
   const body =
     queued.length === 1
       ? queued[0]!.text
       : `${queued.length} messages arrived while you were busy:\n\n` +
         queued.map((m, i) => `(${i + 1}) from ${m.from}:\n${m.text}`).join("\n\n");
-  await d.herdr.deliver(paneId, body, status);
+  if (!(await d.herdr.deliver(paneId, body))) return "no-agent";
   d.store.clearInbox(paneId);
-  return true;
+  return "delivered";
 }
 
 /**
@@ -230,7 +245,11 @@ export async function dutyTick(d: Deps): Promise<DutyEvent[]> {
   const events: DutyEvent[] = [];
   for (const paneId of d.store.inboxPanes()) {
     try {
-      if (await flushInbox(d, paneId)) events.push({ pane: paneId, action: "flushed" });
+      const result = await flushInbox(d, paneId);
+      if (result === "delivered") events.push({ pane: paneId, action: "flushed" });
+      if (result === "no-agent") {
+        events.push({ pane: paneId, action: "inbox-held", detail: `no agent running; ${d.store.queued(paneId).length} message(s) kept` });
+      }
     } catch (e) {
       // One pane's failed delivery must never kill the loop for every other pane and lane.
       if (e instanceof Refusal) events.push({ pane: paneId, action: "inbox-target-gone" });

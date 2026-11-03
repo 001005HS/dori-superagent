@@ -106,25 +106,23 @@ export class Herdr {
   }
 
   /**
-   * Delivers one message into a pane as a single argv element: nothing in it is ever
-   * expanded by a shell. Agents get `agent prompt`; a plain shell pane gets text + Enter.
+   * Delivers one message to the agent in a pane as a single argv element: nothing in it is ever expanded by a shell.
+   * Returns false, having typed nothing, when the pane turns out to have no running agent: text typed into a bare
+   * shell runs as a command (#66), so the caller keeps the message queued.
    */
-  async deliver(paneId: string, text: string, kind: AgentStatus): Promise<void> {
-    if (kind === "shell") {
-      await this.call(["pane", "send-text", paneId, text]);
-      await this.call(["pane", "send-keys", paneId, "enter"]);
-      return;
-    }
+  async deliver(paneId: string, text: string): Promise<boolean> {
     try {
       await this.call(["agent", "prompt", paneId, text]);
+      return true;
     } catch (e) {
       // herdr only accepts `agent prompt` for agents it started itself (`herdr agent start`); an omo launched
       // with `pane run` is detected but refused. Fall back to typing the text and pressing Enter.
       // Match herdr's own output, never e.message: that carries argv, which includes the delivered text.
       if (!(e instanceof HerdrError) || !/agent_not_ready/.test(e.result.stderr || e.result.stdout)) throw e;
       // agent_not_ready also covers an agent that exited and left a shell in front: typing would run the text there.
+      // Re-read right before typing (#66): only a pane that still has an agent gets keystrokes.
       const st = await this.status(paneId);
-      if (st === "shell" || st === "gone") throw e;
+      if (st === "shell" || st === "gone") return false;
       // A multi-line paste swallows the Enter that follows it, so type the message as one line.
       await this.call(["pane", "send-text", paneId, text.trim().replace(/\s*\n\s*/g, " / ")]);
       await Bun.sleep(PASTE_SETTLE_MS);
@@ -132,12 +130,23 @@ export class Herdr {
       for (let attempt = 1; ; attempt++) {
         try {
           await this.call(["pane", "send-keys", paneId, "enter"]);
-          return;
+          return true;
         } catch (err) {
           if (attempt >= ENTER_ATTEMPTS) throw err;
         }
       }
     }
+  }
+
+  /**
+   * The operator's explicit `dori send --to-shell`: types text + Enter into a pane that has no agent. The status is
+   * re-read right before typing; if an agent is there now, nothing is typed and false is returned.
+   */
+  async typeIntoShell(paneId: string, text: string): Promise<boolean> {
+    if ((await this.status(paneId)) !== "shell") return false;
+    await this.call(["pane", "send-text", paneId, text]);
+    await this.call(["pane", "send-keys", paneId, "enter"]);
+    return true;
   }
 
   async read(paneId: string, lines = 80): Promise<string> {

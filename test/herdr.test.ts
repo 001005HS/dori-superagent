@@ -51,13 +51,8 @@ describe("herdr argv", () => {
     const r = recorder();
     const h = new Herdr(r.exec, "");
     const text = `it's "done" $(rm -rf ~) \`id\`\nline two`;
-    await h.deliver("w1:p1", text, "idle");
-    await h.deliver("w1:p9", text, "shell");
-    expect(r.calls).toEqual([
-      ["agent", "prompt", "w1:p1", text],
-      ["pane", "send-text", "w1:p9", text],
-      ["pane", "send-keys", "w1:p9", "enter"],
-    ]);
+    expect(await h.deliver("w1:p1", text)).toBe(true);
+    expect(r.calls).toEqual([["agent", "prompt", "w1:p1", text]]);
   });
 });
 

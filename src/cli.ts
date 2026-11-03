@@ -2,7 +2,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
-  defaultDeps, done, dutyTick, mergeGate, ready, Refusal, report, review, send, startLane, ROLES, type Deps,
+  defaultDeps, done, dutyTick, mergeGate, ready, Refusal, report, review, send, sendToShell, startLane, ROLES, type Deps,
 } from "./harness.ts";
 import { shq } from "./herdr.ts";
 import { backlogAdd, backlogDecide, backlogDrop, backlogImport, loopTick, msUntilNext, summary, HOUR, IMPORT_LIMIT } from "./loop.ts";
@@ -15,7 +15,8 @@ const USAGE = `dori - a proactive multi-session harness on herdr + omo
   dori start <key> --brief FILE [--cwd DIR]   open a lane: new tab, omo session, brief + lane rules
   dori report <key> --text T [--status working|waiting]
   dori ready <key> --text T --evidence LINK [--evidence LINK ...]
-  dori send <lead|duty|key|pane> --text T     deliver now, or queue until the pane is idle
+  dori send <lead|duty|key|pane> --text T     deliver now, or queue until the pane's agent is idle
+                  [--to-shell]                operator only: type this one message into a pane with no agent
   dori duty [--once] [--interval SECONDS]     flush inboxes, nudge idle lanes, escalate, detect lost lanes
   dori duty stop [--text WHY] | resume | status   kill switch
   dori loop [--once] [--interval S] [--max-lanes N] [--max-starts N] [--max-load L] [--force]
@@ -35,6 +36,10 @@ const COMMANDS = new Set(["up", "role", "start", "report", "ready", "send", "dut
 
 type Args = { pos: string[]; flags: Map<string, string[]> };
 
+// Flags that never take a value. Every other flag takes the next argument verbatim, even one starting with "--", so a
+// relayed value such as `--from "$SENDER"` or `--text "$MSG"` can never turn into a flag like --to-shell (#66).
+const BOOLEAN_FLAGS: ReadonlySet<string> = new Set(["once", "force", "dry-run", "to-shell"]);
+
 function parse(argv: readonly string[]): Args {
   const pos: string[] = [];
   const flags = new Map<string, string[]>();
@@ -43,7 +48,7 @@ function parse(argv: readonly string[]): Args {
     if (!a.startsWith("--")) { pos.push(a); continue; }
     const name = a.slice(2);
     const next = argv[i + 1];
-    const value = next !== undefined && !next.startsWith("--") ? (i++, next) : "true";
+    const value = BOOLEAN_FLAGS.has(name) || next === undefined ? "true" : (i++, next);
     flags.set(name, [...(flags.get(name) ?? []), value]);
   }
   return { pos, flags };
@@ -130,9 +135,11 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
       await ready(d, need(x, "lane key"), await textOf(a), a.flags.get("evidence") ?? []);
       console.log(`READY ${x}`);
       return 0;
-    case "send":
-      console.log(`${await send(d, need(x, "target"), await textOf(a), one(a, "from") ?? process.env["DORI_LANE"] ?? "cli")} ${x}`);
+    case "send": {
+      const deliver = one(a, "to-shell") === "true" ? sendToShell : send;
+      console.log(`${await deliver(d, need(x, "target"), await textOf(a), one(a, "from") ?? process.env["DORI_LANE"] ?? "cli")} ${x}`);
       return 0;
+    }
     case "duty": {
       if (x === "stop") {
         d.store.setStop(d.now(), one(a, "text") ?? "stopped by hand", "duty");

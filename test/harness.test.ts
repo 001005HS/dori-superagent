@@ -72,11 +72,11 @@ describe("pane messaging", () => {
     const enters = () => w.calls.filter((c) => c.argv[1] === "send-keys").length;
     w.promptFails.set("w1:p1", '{"error":{"code":"agent_not_ready"}}');
     w.keyFails = 2;
-    await d.herdr.deliver("w1:p1", "once", "idle");
+    await d.herdr.deliver("w1:p1", "once");
     expect(lead.received).toEqual(["once"]);
     expect(enters()).toBe(3);
     w.keyFails = 5;
-    await expect(d.herdr.deliver("w1:p1", "twice", "idle")).rejects.toThrow("key press failed");
+    await expect(d.herdr.deliver("w1:p1", "twice")).rejects.toThrow("key press failed");
     expect(lead.received).toEqual(["once", "twice"]);
     expect(enters()).toBe(6);
   });
@@ -84,22 +84,22 @@ describe("pane messaging", () => {
   test("another `agent prompt` failure for a message that merely mentions agent_not_ready is still thrown", async () => {
     const { w, d, lead } = setup();
     w.promptFails.set("w1:p1", "herdr exploded");
-    await expect(d.herdr.deliver("w1:p1", "a lane quoted agent_not_ready here", "idle")).rejects.toThrow("herdr exploded");
+    await expect(d.herdr.deliver("w1:p1", "a lane quoted agent_not_ready here")).rejects.toThrow("herdr exploded");
     expect(lead.received).toEqual([]);
   });
 
   test("the typed fallback trims leading and trailing newlines instead of leaving a dangling ' / '", async () => {
     const { w, d, lead } = setup();
     w.promptFails.set("w1:p1", '{"error":{"code":"agent_not_ready"}}');
-    await d.herdr.deliver("w1:p1", "\n\nhello\nworld\n\n", "idle");
+    await d.herdr.deliver("w1:p1", "\n\nhello\nworld\n\n");
     expect(lead.received).toEqual(["hello / world"]);
   });
 
-  test("agent_not_ready on a pane that is now a plain shell throws instead of typing into the shell", async () => {
+  test("agent_not_ready on a pane that is now a plain shell types nothing and reports not delivered", async () => {
     const { w, d } = setup();
     const shell = w.addPane("w1:p7", "shell");
     w.promptFails.set("w1:p7", '{"error":{"code":"agent_not_ready"}}');
-    await expect(d.herdr.deliver("w1:p7", "rm -rf nothing", "idle")).rejects.toThrow("agent_not_ready");
+    await expect(d.herdr.deliver("w1:p7", "rm -rf nothing")).resolves.toBe(false);
     expect(shell.received).toEqual([]);
   });
 

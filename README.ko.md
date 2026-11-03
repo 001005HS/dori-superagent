@@ -140,7 +140,7 @@ dori done fix-flaky-login            # closes the lane's pane; only a READY lane
 
 READY에는 증거가 붙어야 합니다. `dori ready`는 `--evidence` 링크가 하나도 없거나 최종 답변 텍스트가 없으면 거절합니다(`src/harness.ts`의 `ready()`). 텍스트와 링크는 레인 레코드에 `final`로 저장되고, `dori done`은 `ready`가 아닌 레인을 거절합니다. 그래서 답변이 기록되지 않은 채 닫히는 레인은 없습니다.
 
-바쁜 pane은 건드리지 않습니다. `dori send`는 먼저 herdr에 그 pane의 에이전트 상태를 묻습니다. `idle`, `done`, 아니면 그냥 셸이면 바로 전달하고, 그 밖의 상태면 `~/.dori/inbox/`에 큐로 넣고 `QUEUED`를 출력합니다. pane이 idle이 되면 듀티 루프가 큐를 메시지 하나로 전달하는데, 그 메시지는 "N messages arrived while you were busy"로 시작합니다(`src/harness.ts`의 `send()`와 `flushInbox()`). `dori done`도 같은 식으로 기다립니다. herdr가 working이나 blocked라고 하는 pane은 닫지 않습니다.
+바쁜 pane은 건드리지 않습니다. `dori send`는 먼저 herdr에 그 pane의 에이전트 상태를 묻습니다. `idle`이나 `done`이면 바로 전달하고, 그 밖의 상태면 `~/.dori/inbox/`에 큐로 넣고 `QUEUED`를 출력합니다. 에이전트가 돌고 있지 않은 pane(에이전트가 종료되어 셸만 남은 경우)에는 절대 입력하지 않습니다. 셸에 입력한 텍스트는 명령으로 실행되기 때문입니다. 그 pane의 메시지는 큐에 남고, 에이전트가 다시 뜰 때까지 듀티 루프가 `inbox-held`를 출력합니다. 일반 셸에 일부러 입력하려면 운영자가 `--to-shell`을 붙입니다. 그 메시지 하나에만 적용되고 큐에 있는 메시지에는 적용되지 않습니다. pane이 idle이 되면 듀티 루프가 큐를 메시지 하나로 전달하는데, 그 메시지는 "N messages arrived while you were busy"로 시작합니다(`src/harness.ts`의 `send()`와 `flushInbox()`). `dori done`도 같은 식으로 기다립니다. herdr가 working이나 blocked라고 하는 pane은 닫지 않습니다.
 
 nudge는 10분, 20분, 40분입니다. `src/harness.ts`의 `NUDGE_MINUTES = [10, 20, 40]`입니다. 10분 동안 보고가 없고 pane도 working이 아닌 레인은 자기 pane에 `prompts/nudge.md`를 받습니다. 20분에 한 번 더 받습니다. 40분이 되면 듀티 루프는 nudge를 그만두고 리드에게 `[ESCALATE <key>]`를 보냅니다. `working`인 pane은 idle 시계가 되돌아가고, `--status waiting`으로 보고했거나 pane이 `blocked`인 레인은 건드리지 않고, 새 보고가 오면 nudge 횟수가 0으로 돌아가고, pane이 사라지면 `[LOST <key>]`로 보고됩니다.
 

@@ -17,6 +17,9 @@ export class World {
   next = 1;
   /** pane id -> herdr error text returned by `agent prompt` (exit 1) */
   promptFails = new Map<string, string>();
+  /** pane id -> called with the 1-based count of `pane get` calls for that pane, before it answers */
+  getHook = new Map<string, (n: number) => void>();
+  private gets = new Map<string, number>();
   /** number of upcoming `pane send-keys` calls that fail (exit 1) */
   keyFails = 0;
   gh: (argv: readonly string[]) => { code: number; stdout: string } = () => ({ code: 1, stdout: "" });
@@ -56,6 +59,9 @@ export class World {
     const pane = id ? this.panes.get(id) : undefined;
     if (!pane) return { code: 1, stdout: "", stderr: `pane_not_found ${id}` };
     if (group === "pane" && verb === "get") {
+      const n = (this.gets.get(id!) ?? 0) + 1;
+      this.gets.set(id!, n);
+      this.getHook.get(id!)?.(n);
       return ok({ pane: { pane_id: id, agent: pane.status === "shell" ? null : "pi", agent_status: pane.status } });
     }
     if (group === "pane" && verb === "read") {

@@ -32,6 +32,11 @@ const until = async <T>(what: string, probe: () => Promise<T | undefined>, ms = 
   }
   throw new Error(`timed out waiting for ${what}`);
 };
+// The lead here is `cat`, which herdr does not recognise as an agent: a bare shell pane. Messages for it must stay in its
+// inbox and never be typed into it (#66).
+const leadInbox = (lead: string) => Bun.file(join(home, "inbox", `${lead.replaceAll(":", "_")}.jsonl`)).text();
+const leadScreen = async (lead: string) =>
+  (await spawnExec("herdr", ["--session", session, "pane", "read", lead, "--lines", "80", "--source", "recent"])).stdout;
 
 beforeAll(async () => {
   if (!herdrBin) return;
@@ -46,7 +51,7 @@ afterAll(async () => {
   await spawnExec("herdr", ["session", "delete", session]);
 });
 
-test.skipIf(!herdrBin)("a lane started in real herdr reports and finishes, and the lead pane receives both", async () => {
+test.skipIf(!herdrBin)("a lane started in real herdr reports and finishes; the lead pane has no agent, so both wait in its inbox", async () => {
   const ws = await herdr("workspace", "create", "--label", "e2e", "--cwd", home, "--no-focus");
   const lead = ws.root_pane.pane_id as string;
   await herdr("pane", "run", lead, "cat");
@@ -62,10 +67,11 @@ test.skipIf(!herdrBin)("a lane started in real herdr reports and finishes, and t
   });
   expect(await started.exited).toBe(0);
 
-  const leadText = await until("READY in the lead pane", async () => {
-    const r = await spawnExec("herdr", ["--session", session, "pane", "read", lead, "--lines", "60", "--source", "recent"]);
-    return r.stdout.includes("[READY e2e-lane]") ? r.stdout : undefined;
+  const leadText = await until("READY in the lead inbox", async () => {
+    const text = await leadInbox(lead);
+    return text.includes("[READY e2e-lane]") ? text : undefined;
   });
+  expect(await leadScreen(lead)).not.toContain("e2e-lane");
   expect(leadText).toContain("[START e2e-lane]");
   expect(leadText).toContain("[REPORT e2e-lane] read brief: E2E-BRIEF say hello");
   expect(leadText).toContain("[READY e2e-lane] e2e lane finished");
@@ -91,10 +97,11 @@ test.skipIf(!herdrBin)("the hourly loop starts a backlog item as a lane in real 
   expect(await loop.exited).toBe(0);
   expect(await new Response(loop.stdout).text()).toContain("LOOP started=1");
 
-  const leadText = await until("READY from the loop-started lane", async () => {
-    const r = await spawnExec("herdr", ["--session", session, "pane", "read", lead, "--lines", "80", "--source", "recent"]);
-    return r.stdout.includes("[READY loop-item]") ? r.stdout : undefined;
+  const leadText = await until("READY from the loop-started lane in the lead inbox", async () => {
+    const text = await leadInbox(lead);
+    return text.includes("[READY loop-item]") ? text : undefined;
   });
+  expect(await leadScreen(lead)).not.toContain("loop-item");
   expect(leadText).toContain("[START loop-item]");
   expect(leadText).toContain("[LOOP ");
   expect(leadText).toContain("started: loop-item (p2)");

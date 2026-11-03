@@ -47,6 +47,8 @@ export const sendVerified = async (run: Runner, clock: Clock, pane: string, text
   if (/`|\$\(/.test(text)) throw new UnsafeTextError("refusing to send text containing a backtick or $(");
   const before = await statusLookup(run, pane);
   if (before.error) console.error(`sendVerified ${pane}: status lookup failed before send: ${before.error}`);
+  // No running agent means a bare shell, where typed text runs as a command (#66). A failed lookup is doubt: refuse.
+  if (before.status === undefined || !ALIVE_STATUSES.has(before.status)) return "failed";
   if ((await run(["herdr", "pane", "send-text", pane, text])).code !== 0) return "failed";
   await run(["herdr", "pane", "send-keys", pane, "enter"]);
   if (before.status === "working") return "unconfirmed";
