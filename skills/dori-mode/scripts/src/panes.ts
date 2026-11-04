@@ -46,8 +46,9 @@ const runsCommand = (shell: string, arg: string): boolean =>
   shell === "pwsh" || shell === "powershell"
     ? /^-(c|command|f|file|e|ec|encodedcommand)$/i.test(arg)
     : /^-[A-Za-z]*c[A-Za-z]*$/.test(arg);
-// PowerShell's -NoExit keeps an interactive prompt after the command runs, so that shell is held.
-const keepsPrompt = (shell: string, arg: string): boolean => (shell === "pwsh" || shell === "powershell") && /^-(noe|noexit)$/i.test(arg);
+// PowerShell's -NoExit (any prefix it accepts: -noe, -noex, -noexi, -noexit, one or two dashes) keeps an interactive
+// prompt after the command runs, so that shell is held.
+const keepsPrompt = (shell: string, arg: string): boolean => (shell === "pwsh" || shell === "powershell") && /^--?noe(x(i(t)?)?)?$/i.test(arg);
 
 /**
  * True when `herdr pane process-info` shows an interactive shell in the pane's foreground group, or cannot be read.
