@@ -125,6 +125,8 @@ describe("interactiveShellInFront (#66: a suspended agent leaves its shell in fr
     ["pwsh -Interactive", [{ name: "pwsh", argv: ["pwsh", "-Interactive"] }], true],
     ["pwsh -NoProfile -ExecutionPolicy Bypass", [{ name: "pwsh", argv: ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass"] }], true],
     ["pwsh -NoExit -Command keeps a prompt", [{ name: "pwsh", argv: ["pwsh", "-NoExit", "-Command", "ls"] }], true],
+    ["pwsh -noex -c keeps a prompt", [{ name: "pwsh", argv: ["pwsh", "-noex", "-c", "ls"] }], true],
+    ["pwsh --noexi -Command keeps a prompt", [{ name: "pwsh", argv: ["pwsh", "--noexi", "-Command", "ls"] }], true],
     ["powershell -c", [{ name: "powershell", argv: ["powershell", "-c", "ls"] }], false],
     ["pwsh -Command", [{ name: "pwsh", argv: ["pwsh", "-Command", "ls"] }], false],
     ["exec'd agent", [{ name: "bun", argv: ["bun", "omo.js"] }], false],
