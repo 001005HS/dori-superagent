@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Herdr, HerdrError, shq, type Exec, type ExecResult } from "../src/herdr.ts";
+import { Herdr, HerdrError, interactiveShellInFront, shq, type Exec, type ExecResult } from "../src/herdr.ts";
 
 // A recorder in place of the herdr binary: every argv is kept, and each reply is chosen per call.
 function recorder(reply: (argv: readonly string[]) => ExecResult = () => ok({})) {
@@ -48,16 +48,11 @@ describe("herdr argv", () => {
   });
 
   test("a message is one argv element, delivered verbatim: quotes, $(...) and newlines are never expanded", async () => {
-    const r = recorder();
+    const r = recorder((argv) => ok(argv[1] === "process-info" ? { process_info: { foreground_processes: [{ name: "omo", argv: ["omo"] }] } } : {}));
     const h = new Herdr(r.exec, "");
     const text = `it's "done" $(rm -rf ~) \`id\`\nline two`;
-    await h.deliver("w1:p1", text, "idle");
-    await h.deliver("w1:p9", text, "shell");
-    expect(r.calls).toEqual([
-      ["agent", "prompt", "w1:p1", text],
-      ["pane", "send-text", "w1:p9", text],
-      ["pane", "send-keys", "w1:p9", "enter"],
-    ]);
+    expect(await h.deliver("w1:p1", text)).toBe(true);
+    expect(r.calls).toEqual([["pane", "process-info", "--pane", "w1:p1"], ["agent", "prompt", "w1:p1", text]]);
   });
 });
 
@@ -105,5 +100,40 @@ describe("shq", () => {
       const proc = Bun.spawn(["sh", "-c", `printf %s ${shq(s)}`], { stdout: "pipe" });
       expect(await new Response(proc.stdout).text()).toBe(s);
     }
+  });
+});
+
+describe("interactiveShellInFront (#66: a suspended agent leaves its shell in front)", () => {
+  const front = (...procs: { name?: string; argv?: string[] }[]) => interactiveShellInFront({ foreground_processes: procs });
+  test.each([
+    ["login shell", [{ name: "-bash", argv: ["-bash"] }], true],
+    ["interactive zsh by path, upper case", [{ name: "/bin/ZSH", argv: ["/bin/zsh", "-i"] }], true],
+    ["bash -C (noclobber) is still interactive", [{ name: "bash", argv: ["bash", "-C"] }], true],
+    ["busybox sh applet", [{ name: "busybox", argv: ["busybox", "sh"] }], true],
+    ["shell entry without argv", [{ name: "fish" }], true],
+    ["agent with a sh -c child", [{ name: "omo", argv: ["omo"] }, { name: "sh", argv: ["sh", "-c", "sleep 1"] }], false],
+    ["shell running a script is held, the safe side", [{ name: "bash", argv: ["bash", "tool.sh"] }], true],
+    ["interactive bash with --rcfile FILE", [{ name: "bash", argv: ["bash", "--rcfile", "/tmp/rc"] }], true],
+    ["interactive zsh with -o OPT", [{ name: "zsh", argv: ["zsh", "-o", "vi"] }], true],
+    ["login shell running a command: -lc", [{ name: "bash", argv: ["bash", "-lc", "make"] }], false],
+    ["pwsh -File", [{ name: "pwsh", argv: ["pwsh", "-File", "x.ps1"] }], false],
+    ["bash -f (noglob) is still interactive", [{ name: "bash", argv: ["bash", "-f"] }], true],
+    ["bash --init-file F", [{ name: "bash", argv: ["bash", "--init-file", "/tmp/rc"] }], true],
+    ["fish -C cmd (init command, still interactive)", [{ name: "fish", argv: ["fish", "-C", "set x 1"] }], true],
+    ["bash -ic cmd runs a command", [{ name: "bash", argv: ["bash", "-ic", "make"] }], false],
+    ["pwsh -EncodedCommand", [{ name: "pwsh", argv: ["pwsh", "-EncodedCommand", "ZQBjAGgAbwA="] }], false],
+    ["pwsh -Interactive", [{ name: "pwsh", argv: ["pwsh", "-Interactive"] }], true],
+    ["pwsh -NoProfile -ExecutionPolicy Bypass", [{ name: "pwsh", argv: ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass"] }], true],
+    ["pwsh -NoExit -Command keeps a prompt", [{ name: "pwsh", argv: ["pwsh", "-NoExit", "-Command", "ls"] }], true],
+    ["powershell -c", [{ name: "powershell", argv: ["powershell", "-c", "ls"] }], false],
+    ["pwsh -Command", [{ name: "pwsh", argv: ["pwsh", "-Command", "ls"] }], false],
+    ["exec'd agent", [{ name: "bun", argv: ["bun", "omo.js"] }], false],
+  ] as const)("%s", (_, procs, want) => {
+    expect(front(...(procs as unknown as { name?: string; argv?: string[] }[]))).toBe(want);
+  });
+  test("an empty or missing process list is doubt", () => {
+    expect(interactiveShellInFront({ foreground_processes: [] })).toBe(true);
+    expect(interactiveShellInFront({})).toBe(true);
+    expect(interactiveShellInFront(undefined)).toBe(true);
   });
 });

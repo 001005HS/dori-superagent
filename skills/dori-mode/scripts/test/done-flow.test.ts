@@ -22,6 +22,7 @@ beforeEach(async () => {
 afterEach(() => state.done());
 
 test("an objection inside the window keeps the lane open and the lane hears why", async () => {
+  world.panes = [{ pane_id: "w:p1", workspace_id: "w", agent: "pi", agent_status: "idle" }];
   await claimDone(at(T0), lane, "merged acme/app#1 abc123");
   await objectDone(at(T0 + MIN), (await at(T0).registry.read("demo-lane")) ?? lane, ["changelog entry missing"]);
   await watchTick(at(T0 + 6 * MIN));
@@ -159,6 +160,42 @@ test("a pane that was already working cannot show a change, so the send is uncon
   world.panes = [{ pane_id: "w:p1", workspace_id: "w", agent: "pi", agent_status: "working" }];
   expect(await sendVerified(at(T0).run, at(T0).clock, "w:p1", "[LEAD] queued while busy")).toBe("unconfirmed");
   expect(world.calls.filter((c) => c[2] === "send-keys")).toHaveLength(1);
+});
+
+test("a pane with no running agent is a bare shell: nothing is typed, the send fails", async () => {
+  world.panes = [{ pane_id: "w:p1", workspace_id: "w" }];
+  expect(await sendVerified(at(T0).run, at(T0).clock, "w:p1", "[LEAD] please report")).toBe("failed");
+  world.panes = [];
+  expect(await sendVerified(at(T0).run, at(T0).clock, "w:p1", "[LEAD] please report")).toBe("failed");
+  expect(world.calls.filter((c) => c[2] === "send-text" || c[2] === "send-keys")).toHaveLength(0);
+});
+
+test("an agent suspended with Ctrl+Z is still reported idle, but the shell is in front: nothing is typed", async () => {
+  world.panes = [{ pane_id: "w:p1", workspace_id: "w", agent: "opencode", agent_status: "idle", foreground: "-zsh" }];
+  expect(await sendVerified(at(T0).run, at(T0).clock, "w:p1", "[LEAD] please report")).toBe("failed");
+  expect(world.calls.filter((c) => c[2] === "send-text" || c[2] === "send-keys")).toHaveLength(0);
+});
+
+test("an agent with a non-interactive sh -c child in front is delivered to; an empty foreground group is doubt", async () => {
+  world.panes = [{ pane_id: "w:p1", workspace_id: "w", agent: "pi", agent_status: "idle", foreground: [{ name: "pi", argv: ["pi"] }, { name: "sh", argv: ["sh", "-c", "true"] }] }];
+  world.onEnterStatus = "working";
+  expect(await sendVerified(at(T0).run, at(T0).clock, "w:p1", "[LEAD] one")).toBe("delivered");
+  world.panes = [{ pane_id: "w:p1", workspace_id: "w", agent: "pi", agent_status: "idle", foreground: [] }];
+  const before = world.calls.filter((c) => c[2] === "send-text").length;
+  expect(await sendVerified(at(T0).run, at(T0).clock, "w:p1", "[LEAD] two")).toBe("failed");
+  expect(world.calls.filter((c) => c[2] === "send-text").length).toBe(before);
+});
+
+test("a failed pane lookup is doubt: nothing is typed, the send fails", async () => {
+  const deps = at(T0);
+  const typed: (readonly string[])[] = [];
+  const run = async (argv: readonly string[]) => {
+    if (argv[1] === "pane" && argv[2] === "list") return { code: 1, out: "", err: "herdr down" };
+    if (argv[2] === "send-text" || argv[2] === "send-keys") typed.push(argv);
+    return deps.run(argv);
+  };
+  expect(await sendVerified(run as typeof deps.run, deps.clock, "w:p1", "[LEAD] please report")).toBe("failed");
+  expect(typed).toHaveLength(0);
 });
 
 test("text with a backtick never reaches a pane", async () => {
