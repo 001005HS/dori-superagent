@@ -6,9 +6,10 @@ import { join } from "node:path";
 import { deadPaneTick, newDeadPaneState } from "../src/dead-panes.ts";
 import { freshnessTick, lastReportLine } from "../src/freshness.ts";
 import { acquireSlot, releaseSlot } from "../src/heavy-slot.ts";
-import { guardTick } from "../src/host-guard.ts";
+import { guardTick, sampleHost } from "../src/host-guard.ts";
 import { adoptLane, cliCommand, footer, launchLane, LaunchError, shellQuote } from "../src/launch.ts";
 import type { Lane } from "../src/registry.ts";
+import type { Runner } from "../src/run.ts";
 import { resolveSession } from "../src/session-id.ts";
 import { depsFor, fakeClock, newWorld, sent, withState, type World } from "./fakes.ts";
 
@@ -214,6 +215,29 @@ test("the host guard alerts on low disk, clears when it recovers, and flips comp
   const recovered = guardTick({ ...healthy, load1: 120 }, t, st);
   expect(recovered[0]).toStartWith("HOST_GUARD CLEAR");
   expect(recovered.slice(1)).toEqual(["HOST_GUARD COMPUTE_BUSY load 120"]);
+});
+
+const linuxHost = (meminfo: string | null): Runner => async (argv) => {
+  const [cmd] = argv;
+  if (cmd === "cat" && argv[1] === "/proc/meminfo") return meminfo === null ? { code: 1, out: "", err: "no such file" } : { code: 0, out: meminfo, err: "" };
+  if (cmd === "cat") return { code: 0, out: "0.50 0.40 0.30 1/200 999", err: "" };
+  if (cmd === "df") return { code: 0, out: "Filesystem 1K-blocks Used Available Use% Mounted\n/dev/x 1000 500 524288 50% /", err: "" };
+  return { code: 127, out: "", err: "not found" };
+};
+
+test("on Linux the host guard reports 0% free when MemAvailable is 0", async () => {
+  const s = await sampleHost(linuxHost("MemTotal:       16000000 kB\nMemFree:               0 kB\nMemAvailable:          0 kB\n"));
+  expect(s.memFreePct).toBe(0);
+});
+
+test("on Linux the host guard reads free memory from /proc/meminfo when memory_pressure is missing", async () => {
+  const s = await sampleHost(linuxHost("MemTotal:       16000000 kB\nMemFree:          200000 kB\nMemAvailable:    4000000 kB\n"));
+  expect(s.memFreePct).toBe(25);
+});
+
+test("the host guard keeps memory at 100% when neither memory_pressure nor /proc/meminfo works", async () => {
+  expect((await sampleHost(linuxHost(null))).memFreePct).toBe(100);
+  expect((await sampleHost(linuxHost("MemTotal:       16000000 kB\n"))).memFreePct).toBe(100);
 });
 
 test("a heavy slot waits for load to drop, and a slot held by a dead process is taken over", async () => {
