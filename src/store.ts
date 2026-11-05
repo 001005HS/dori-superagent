@@ -27,7 +27,7 @@ export type Role = "lead" | "duty";
  */
 export type DeliveryAttempt = { at: number; state: "typed" | "ambiguous"; detail?: string; agent?: string; pgid?: number };
 
-/** A flush lock older than this is taken over, as is one whose pid is dead on this host (#108). */
+/** A flush lock from another host (or an unreadable one) older than this is taken over; on this host only a dead pid frees it (#108). */
 export const INBOX_LOCK_STALE_MS = 60_000;
 
 export type QueuedMessage = { at: number; from: string; text: string; attempt?: DeliveryAttempt };
@@ -193,8 +193,8 @@ export class Store {
 
   /**
    * Takes the pane's inbox lock (`<inbox>.lock`, created O_EXCL, holding pid, host and time) and returns its release,
-   * or undefined while another flush holds it. A lock older than INBOX_LOCK_STALE_MS, or whose pid is dead on this
-   * host, is taken over: it is renamed aside first, and when what was renamed is not the lock judged stale (another
+   * or undefined while another flush holds it. A lock whose pid is dead on this host, or one from another host (or
+   * unreadable) older than INBOX_LOCK_STALE_MS, is taken over: it is renamed aside first, and when what was renamed is not the lock judged stale (another
    * process took it over in between), it is put back and the lock counts as held.
    */
   lockInbox(paneId: string, now: number): (() => void) | undefined {
