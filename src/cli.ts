@@ -2,7 +2,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
-  defaultDeps, done, dutyTick, mergeGate, ready, Refusal, report, review, send, sendToShell, startLane, ROLES, type Deps,
+  defaultDeps, done, dutyTick, mergeGate, ready, Refusal, report, review, send, sendToShell, startLane, ROLES, type Deps, type SendResult,
 } from "./harness.ts";
 import { shq } from "./herdr.ts";
 import { backlogAdd, backlogDecide, backlogDrop, backlogImport, loopTick, msUntilNext, summary, HOUR, IMPORT_LIMIT } from "./loop.ts";
@@ -30,7 +30,9 @@ const USAGE = `dori - a proactive multi-session harness on herdr + omo
   dori done <key>                             lead closes a READY lane
   dori status
 
---text may be omitted to read the message from stdin.`;
+--text may be omitted to read the message from stdin.
+send, report and ready exit 3 and print HELD <target> when the delivery may or may not have reached the pane:
+it is held and never resent, so do not send it again. QUEUED (exit 0) means it waits in the pane's inbox.`;
 
 const COMMANDS = new Set(["up", "role", "start", "report", "ready", "send", "duty", "review", "merge", "done", "status", "loop", "backlog"]);
 
@@ -65,6 +67,16 @@ async function textOf(a: Args): Promise<string> {
   if (t !== undefined) return t;
   if (process.stdin.isTTY) throw new Refusal("give --text or pipe the message on stdin");
   return (await Bun.stdin.text()).trim();
+}
+
+/** Prints the line for a delivery that did not land now and returns the exit code: HELD 3, everything else 0. */
+function deliveryOutcome(result: SendResult | undefined, target: string): number {
+  if (result === "HELD") {
+    console.log(`HELD ${target}: delivery may or may not have reached the pane; do not resend`);
+    return 3;
+  }
+  if (result === "QUEUED") console.log(`QUEUED ${target}`);
+  return 0;
 }
 
 function renderPrompt(d: Deps, name: string): string {
@@ -127,18 +139,21 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
     case "report": {
       const st = one(a, "status");
       if (st && st !== "working" && st !== "waiting") throw new Refusal("--status must be working or waiting");
-      await report(d, need(x, "lane key"), await textOf(a), st as "working" | "waiting" | undefined);
+      const sent = await report(d, need(x, "lane key"), await textOf(a), st as "working" | "waiting" | undefined);
       console.log(`REPORTED ${x}`);
-      return 0;
+      return deliveryOutcome(sent, "lead");
     }
-    case "ready":
-      await ready(d, need(x, "lane key"), await textOf(a), a.flags.get("evidence") ?? []);
+    case "ready": {
+      const sent = await ready(d, need(x, "lane key"), await textOf(a), a.flags.get("evidence") ?? []);
       console.log(`READY ${x}`);
-      return 0;
+      return deliveryOutcome(sent, "lead");
+    }
     case "send": {
+      const target = need(x, "target");
       const deliver = one(a, "to-shell") === "true" ? sendToShell : send;
-      console.log(`${await deliver(d, need(x, "target"), await textOf(a), one(a, "from") ?? process.env["DORI_LANE"] ?? "cli")} ${x}`);
-      return 0;
+      const sent = await deliver(d, target, await textOf(a), one(a, "from") ?? process.env["DORI_LANE"] ?? "cli");
+      if (sent === "DELIVERED") console.log(`DELIVERED ${target}`);
+      return deliveryOutcome(sent, target);
     }
     case "duty": {
       if (x === "stop") {
