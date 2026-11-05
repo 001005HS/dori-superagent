@@ -2,8 +2,8 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { cpus, freemem, loadavg, totalmem } from "node:os";
 import { join, resolve } from "node:path";
-import { Herdr, HerdrError, omoScreenIdle, shq, spawnExec, type AgentStatus, type Exec } from "./herdr.ts";
-import { KEY_RE, Store, type HostLoad, type Lane, type Role } from "./store.ts";
+import { DeliveryUncertain, Herdr, HerdrError, omoScreenIdle, shq, spawnExec, type AgentStatus, type Exec } from "./herdr.ts";
+import { KEY_RE, Store, type DeliveryAttempt, type HostLoad, type Lane, type QueuedMessage, type Role } from "./store.ts";
 import { Telemetry, type MergeOutcome, type Usage } from "./telemetry.ts";
 
 export { KEY_RE };
@@ -103,22 +103,75 @@ export async function sendToShell(d: Deps, target: string, text: string, from: s
   return "QUEUED";
 }
 
-export async function flushInbox(d: Deps, paneId: string): Promise<"delivered" | "queued" | "no-agent"> {
-  const queued = d.store.queued(paneId);
-  if (queued.length === 0) return "delivered";
+/**
+ * Delivers a pane's queued messages as one batch. `held`: only messages held after an ambiguous delivery are left;
+ * they wait for a person or the lead (#89). Throws DeliveryUncertain, having recorded the attempt on the queued
+ * messages, when the batch may already have reached the pane.
+ */
+export async function flushInbox(d: Deps, paneId: string): Promise<"delivered" | "queued" | "no-agent" | "held"> {
+  const all = d.store.queued(paneId);
+  if (all.length === 0) return "delivered";
+  const queued = all.filter((m) => m.attempt?.state !== "ambiguous");
+  if (queued.length === 0) return "held";
   let status = await d.herdr.status(paneId);
-  if (status === "gone") throw new Refusal(`pane ${paneId} is gone; ${queued.length} message(s) kept in its inbox`);
+  if (status === "gone") throw new Refusal(`pane ${paneId} is gone; ${all.length} message(s) kept in its inbox`);
   if (status === "working" && (await screenShowsIdle(d, paneId))) status = "idle";
   if (status === "shell") return "no-agent";
   if (!READY_TO_READ.includes(status)) return "queued";
+  const typed = queued.filter((m) => m.attempt?.state === "typed");
+  if (typed.length > 0) {
+    // An earlier pass typed these and only the Enter failed: press Enter, never type them again (#89).
+    if (!(await d.herdr.submitTyped(paneId))) return "no-agent";
+    settleInbox(d, paneId, typed);
+    return "delivered";
+  }
   const body =
     queued.length === 1
       ? queued[0]!.text
       : `${queued.length} messages arrived while you were busy:\n\n` +
         queued.map((m, i) => `(${i + 1}) from ${m.from}:\n${m.text}`).join("\n\n");
-  if (!(await d.herdr.deliver(paneId, body))) return "no-agent";
-  d.store.clearInbox(paneId);
+  try {
+    if (!(await d.herdr.deliver(paneId, body))) return "no-agent";
+  } catch (e) {
+    if (e instanceof DeliveryUncertain) await recordUncertain(d, paneId, queued, e);
+    throw e;
+  }
+  settleInbox(d, paneId, queued);
   return "delivered";
+}
+
+/** Re-reads the inbox and drops the batch (delivered) or marks it with the failed attempt; messages queued meanwhile stay. */
+function settleInbox(d: Deps, paneId: string, batch: readonly QueuedMessage[], attempt?: DeliveryAttempt): void {
+  const left = [...batch];
+  const rest = d.store.queued(paneId).flatMap((m) => {
+    const i = left.findIndex((b) => b.at === m.at && b.from === m.from && b.text === m.text);
+    if (i < 0) return [m];
+    left.splice(i, 1);
+    return attempt ? [{ ...m, attempt }] : [];
+  });
+  d.store.saveInbox(paneId, rest);
+}
+
+const NOTICE_FROM = "dori-delivery";
+
+/**
+ * Records an uncertain delivery on the queued messages. Typed text only waits for its Enter. An ambiguous batch is
+ * held and the lead is told once; held messages are never retried, so the notice is never repeated. A notice that
+ * itself fails ambiguously is held without another notice, so this cannot loop.
+ */
+async function recordUncertain(d: Deps, paneId: string, batch: readonly QueuedMessage[], e: DeliveryUncertain): Promise<void> {
+  const detail = failureDetail(e);
+  settleInbox(d, paneId, batch, { at: d.now(), state: e.typed ? "typed" : "ambiguous", detail });
+  if (e.typed || batch.every((m) => m.from === NOTICE_FROM)) return;
+  const which = batch.map((m) => `from ${m.from} queued ${new Date(m.at).toISOString()}`).join(", ");
+  const text =
+    `[DELIVERY-AMBIGUOUS ${paneId}] ${batch.length} message(s) (${which}) may or may not have reached the pane; herdr said: ${detail}. ` +
+    `Held and not resent. Check the pane; if it did not arrive, send it again with dori send. Then remove the held entry from ${d.store.inboxPath(paneId)}.`;
+  try {
+    await tellLead(d, text, NOTICE_FROM);
+  } catch (err) {
+    process.stderr.write(`dori: telling the lead about the ambiguous delivery to ${paneId} failed too (${failureDetail(err)}); the notice is kept in the lead's inbox\n`);
+  }
 }
 
 /**
@@ -232,6 +285,7 @@ export type DutyEvent = { lane?: string; pane?: string; action: string; detail?:
 
 /** A short one-line reason. A HerdrError message carries the whole argv (the queued text), so use herdr's own output. */
 function failureDetail(e: unknown): string {
+  if (e instanceof DeliveryUncertain) e = e.failure;
   const raw = e instanceof HerdrError ? e.result.stderr || e.result.stdout : e instanceof Error ? e.message : String(e);
   const first = raw.trim().split("\n")[0] ?? "";
   return first.length > 200 ? `${first.slice(0, 200)}...` : first;
@@ -250,9 +304,13 @@ export async function dutyTick(d: Deps): Promise<DutyEvent[]> {
       if (result === "no-agent") {
         events.push({ pane: paneId, action: "inbox-held", detail: `no agent in front; ${d.store.queued(paneId).length} message(s) kept` });
       }
+      // Held after an ambiguous delivery (#89): shown on every pass, resent never; the lead was told once.
+      const held = d.store.queued(paneId).filter((m) => m.attempt?.state === "ambiguous").length;
+      if (held > 0) events.push({ pane: paneId, action: "delivery-ambiguous", detail: `${held} message(s) held, not resent` });
     } catch (e) {
       // One pane's failed delivery must never kill the loop for every other pane and lane.
       if (e instanceof Refusal) events.push({ pane: paneId, action: "inbox-target-gone" });
+      else if (e instanceof DeliveryUncertain && !e.typed) events.push({ pane: paneId, action: "delivery-ambiguous", detail: failureDetail(e) });
       else events.push({ pane: paneId, action: "flush-failed", detail: failureDetail(e) });
     }
   }

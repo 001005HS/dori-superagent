@@ -20,7 +20,13 @@ export type Lane = {
 
 export type Role = "lead" | "duty";
 
-export type QueuedMessage = { at: number; from: string; text: string };
+/**
+ * A delivery that failed after the message may have reached the pane (#89). `typed`: the text is in the pane's input
+ * and only Enter is retried. `ambiguous`: it may or may not have arrived; it is held, never resent automatically.
+ */
+export type DeliveryAttempt = { at: number; state: "typed" | "ambiguous"; detail?: string };
+
+export type QueuedMessage = { at: number; from: string; text: string; attempt?: DeliveryAttempt };
 
 export type ReviewReceipt = {
   pr: string;
@@ -126,7 +132,7 @@ export class Store {
     return join(this.root, "briefs", `${key}.md`);
   }
 
-  private inboxPath(paneId: string): string {
+  inboxPath(paneId: string): string {
     return join(this.root, "inbox", `${paneId.replaceAll(":", "_")}.jsonl`);
   }
 
@@ -140,8 +146,8 @@ export class Store {
     return readFileSync(p, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as QueuedMessage);
   }
 
-  clearInbox(paneId: string): void {
-    writeFileSync(this.inboxPath(paneId), "");
+  saveInbox(paneId: string, msgs: readonly QueuedMessage[]): void {
+    writeFileSync(this.inboxPath(paneId), msgs.map((m) => JSON.stringify(m) + "\n").join(""));
   }
 
   inboxPanes(): string[] {
