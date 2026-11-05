@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { main } from "../src/cli.ts";
 import { done, dutyTick, mergeGate, ready, Refusal, report, review, send, startLane } from "../src/harness.ts";
@@ -24,6 +24,18 @@ describe("lanes", () => {
     expect(await Bun.file(lane.brief).text()).toContain("dori ready fix-login --text");
     expect(lead.received).toEqual([`[START fix-login] lane opened in ${lane.paneId}`]);
     await expect(startLane(d, "fix-login", brief, { workspace: "w1" })).rejects.toThrow(Refusal);
+  });
+
+  test("start refuses the role names lead and duty as lane keys before it writes or opens anything", async () => {
+    const { w, d, lead, brief } = setup();
+    for (const key of ["lead", "duty"]) {
+      await expect(startLane(d, key, brief, { workspace: "w1" })).rejects.toThrow(`lane key "${key}" is reserved for the ${key} role`);
+      expect(d.store.lane(key)).toBeUndefined();
+      expect(existsSync(d.store.briefPath(key))).toBe(false);
+    }
+    expect(w.calls).toEqual([]);
+    expect(lead.received).toEqual([]);
+    expect(d.store.roles().lead).toBe("w1:p1");
   });
 
   test("ready requires evidence, then reaches the lead; done closes only a ready lane", async () => {
