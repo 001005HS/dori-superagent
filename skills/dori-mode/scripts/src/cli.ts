@@ -20,7 +20,7 @@ import { canLaunch } from "./routing.ts";
 import { fetchHttp, MessengerError, UnsafeMessageError } from "./messenger/http.ts";
 import { Slack } from "./messenger/slack.ts";
 import { pollSlackInbound } from "./messenger/slack-inbound.ts";
-import { fileTgInboundStore, pollTelegramInbound } from "./messenger/telegram-inbound.ts";
+import { envInt, fileTgInboundStore, telegramInboundLoop } from "./messenger/telegram-inbound.ts";
 import { ThreadLedger } from "./messenger/thread-ledger.ts";
 import { slackPresence } from "./messenger/slack-presence.ts";
 import { Telegram } from "./messenger/telegram.ts";
@@ -63,7 +63,7 @@ const USAGE = `dori <command> [options]
                                        post or edit a message (tokens from DORI_SLACK_TOKEN, DORI_TELEGRAM_TOKEN, DORI_DISCORD_TOKEN)
   presence <slack|discord>             keep the account shown as online until stopped
   transcribe <audio-file>              run hooks.transcribe and print the text
-  inbound slack|telegram [--loop MIN]  print INBOUND lines: Slack unread thread replies / Telegram owner DMs + configured topic
+  inbound slack|telegram [--loop MIN]  print INBOUND lines: Slack unread thread replies / Telegram owner DMs, edits and media + configured topic
                                        the Dori posted in (any helper), DMs and channels with unread mentions`;
 
 const die = (message: string, code = 1): never => {
@@ -357,20 +357,29 @@ try {
         const tg = new Telegram(fetchHttp, realClock, process.env.DORI_TELEGRAM_TOKEN ?? die("DORI_TELEGRAM_TOKEN is not set"));
         const store = fileTgInboundStore(`${config.stateDir}/telegram-offset`);
         const num = (name: string): number => {
-          const raw = process.env[name] ?? die(`${name} is not set`);
-          const n = Number(raw);
-          if (!Number.isSafeInteger(n)) die(`${name} must be an integer, got: ${raw}`);
-          return n;
+          try {
+            return envInt(name, process.env[name]);
+          } catch (e) {
+            return die(e instanceof Error ? e.message : String(e));
+          }
         };
         const ownerId = num("DORI_TELEGRAM_OWNER_ID");
         const groupChatId = process.env.DORI_TELEGRAM_GROUP_ID === undefined ? undefined : num("DORI_TELEGRAM_GROUP_ID");
         const topicId = process.env.DORI_TELEGRAM_TOPIC_ID === undefined ? undefined : num("DORI_TELEGRAM_TOPIC_ID");
         console.log(`INBOUND_READY telegram owner=${ownerId} group=${groupChatId ?? "-"} topic=${topicId ?? "-"}`);
-        await every(loopMin, async () => {
-          // Full text, JSON-escaped on one line: getUpdates cannot fetch a message twice.
-          await pollTelegramInbound(tg, store, { ownerId, groupChatId, topicId }, (i) =>
-            console.log(`INBOUND ${i.source} ${i.chat} ${i.thread ?? "-"} ${i.updateId} ${i.from} ${JSON.stringify(i.text ?? "")}`));
-        });
+        // Full text, JSON-escaped on one line: getUpdates cannot fetch a message twice.
+        await telegramInboundLoop(
+          tg,
+          store,
+          { ownerId, groupChatId, topicId },
+          loopMin,
+          (i) =>
+            console.log(
+              `INBOUND ${i.kind === "edit" ? "edit:" : ""}${i.source} ${i.chat} ${i.thread ?? "-"} ${i.updateId} ${i.from} ${JSON.stringify(i.text ?? "")}` +
+                (i.media === undefined ? "" : ` file=${i.media.kind}:${i.media.fileId}`),
+            ),
+          (m) => console.log(`WARN ${m}`.slice(0, 300)),
+        );
         break;
       }
       if (key !== "slack") die("inbound supports slack or telegram");
