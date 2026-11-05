@@ -73,6 +73,11 @@ export type LoopRun = {
 
 export const KEEP_RUNS = 168;
 export const KEY_RE = /^[a-z][a-z0-9-]{1,40}$/;
+/** Role names are send targets, and resolveTarget tries roles first, so a lane with one of these keys could never be reached. */
+export const RESERVED_KEYS: readonly Role[] = ["lead", "duty"];
+/** Refusal text for a reserved lane key, or undefined. Keys are lowercase-only (KEY_RE), so the exact match is the whole check. */
+export const reservedKey = (key: string): string | undefined =>
+  (RESERVED_KEYS as readonly string[]).includes(key) ? `lane key "${key}" is reserved for the ${key} role` : undefined;
 
 const checkedId = (id: string): string => {
   if (!KEY_RE.test(id)) throw new Error(`invalid id ${JSON.stringify(id)}: must match ${KEY_RE}`);
