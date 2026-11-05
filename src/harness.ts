@@ -3,10 +3,10 @@ import { readFileSync } from "node:fs";
 import { cpus, freemem, loadavg, totalmem } from "node:os";
 import { join, resolve } from "node:path";
 import { Herdr, HerdrError, omoScreenIdle, shq, spawnExec, type AgentStatus, type Exec } from "./herdr.ts";
-import { KEY_RE, Store, type HostLoad, type Lane, type Role } from "./store.ts";
+import { KEY_RE, reservedKey, Store, type HostLoad, type Lane, type Role } from "./store.ts";
 import { Telemetry, type MergeOutcome, type Usage } from "./telemetry.ts";
 
-export { KEY_RE };
+export { KEY_RE, reservedKey };
 
 export const NUDGE_MINUTES = [10, 20, 40] as const;
 const PROMPTS = join(import.meta.dir, "..", "prompts");
@@ -150,6 +150,8 @@ export async function startLane(
   opts: { cwd?: string; workspace?: string } = {},
 ): Promise<Lane> {
   if (!KEY_RE.test(key)) throw new Refusal(`lane key must match ${KEY_RE}`);
+  const reserved = reservedKey(key);
+  if (reserved) throw new Refusal(reserved);
   const existing = d.store.lane(key);
   if (existing && existing.status !== "done" && existing.status !== "lost") throw new Refusal(`lane ${key} is already open in ${existing.paneId}`);
   const cwd = resolve(opts.cwd ?? process.cwd());

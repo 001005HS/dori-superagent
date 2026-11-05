@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { done, dutyTick, memFreePct, ready, Refusal, report, startLane } from "../src/harness.ts";
 import { backlogAdd, backlogDecide, backlogDrop, backlogImport, HOUR, importId, loopTick, msUntilNext, restore } from "../src/loop.ts";
@@ -24,6 +24,11 @@ describe("backlog", () => {
   test("add validates, copies the brief, and decide/drop change what the loop may start", async () => {
     const { d, brief, add } = setup();
     expect(() => backlogAdd(d, "Bad Id", brief)).toThrow(Refusal);
+    for (const id of ["lead", "duty"]) {
+      expect(() => backlogAdd(d, id, brief)).toThrow(`lane key "${id}" is reserved for the ${id} role`);
+      expect(d.store.item(id)).toBeUndefined();
+      expect(existsSync(d.store.itemBrief(id))).toBe(false);
+    }
     expect(() => backlogAdd(d, "ok-id", brief, { priority: 0 })).toThrow("--priority");
     expect(() => backlogAdd(d, "ok-id", brief, { priority: 10 })).toThrow("--priority");
     expect(() => backlogAdd(d, "ok-id", join(d.store.root, "missing.md"))).toThrow("no brief");
