@@ -119,9 +119,11 @@ function lockStale(path: string, content: string, now: number): boolean {
   } catch {
     // fall through to the file's mtime
   }
+  // On this host the pid decides: a live holder keeps its lock however long a herdr call takes, or a second flush
+  // would deliver the same batch again. The age rule is only for locks from another host or locks that can't be read.
+  if (lock.host === hostname() && typeof lock.pid === "number") return !pidAlive(lock.pid);
   const at = typeof lock.at === "number" ? lock.at : (() => { try { return statSync(path).mtimeMs; } catch { return now; } })();
-  if (now - at > INBOX_LOCK_STALE_MS) return true;
-  return lock.host === hostname() && typeof lock.pid === "number" && !pidAlive(lock.pid);
+  return now - at > INBOX_LOCK_STALE_MS;
 }
 
 export class Store {

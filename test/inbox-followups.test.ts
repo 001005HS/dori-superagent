@@ -199,15 +199,15 @@ describe("one flush per pane (#108 3)", () => {
     expect(s.pane.received).toEqual(["once"]);
   });
 
-  test("a lock older than 60 s, or held by a dead pid on this host, is taken over", async () => {
+  test("a lock held by a dead pid on this host, or older than 60 s from another host, is taken over", async () => {
     const s = setup();
     const exited = Bun.spawn(["true"]);
     await exited.exited;
     for (const stale of [
-      { pid: process.pid, host: hostname(), at: s.w.clock - INBOX_LOCK_STALE_MS - 1 },
+      { pid: 1, host: "other-host", at: s.w.clock - INBOX_LOCK_STALE_MS - 1 },
       { pid: exited.pid, host: hostname(), at: s.w.clock },
     ]) {
-      s.d.store.enqueue("w1:p2", { at: s.w.clock, from: "cli", text: `m${stale.pid === process.pid ? 1 : 2}` });
+      s.d.store.enqueue("w1:p2", { at: s.w.clock, from: "cli", text: `m${stale.host === "other-host" ? 1 : 2}` });
       writeFileSync(lockPath(s), JSON.stringify(stale));
       expect(await flushInbox(s.d, "w1:p2")).toBe("delivered");
       expect(existsSync(lockPath(s))).toBe(false);
@@ -215,10 +215,15 @@ describe("one flush per pane (#108 3)", () => {
     expect(s.pane.received).toEqual(["m1", "m2"]);
   });
 
-  test("a live lock on another host, or a fresh one of a live pid, is not taken over", async () => {
+  test("a fresh lock on another host, or a live pid on this host however old its lock, is not taken over", async () => {
     const s = setup();
     s.d.store.enqueue("w1:p2", { at: s.w.clock, from: "cli", text: "wait" });
-    for (const live of [{ pid: 1, host: "other-host", at: s.w.clock }, { pid: process.pid, host: hostname(), at: s.w.clock - 1000 }]) {
+    for (const live of [
+      { pid: 1, host: "other-host", at: s.w.clock },
+      { pid: process.pid, host: hostname(), at: s.w.clock - 1000 },
+      // A live flush stuck in a slow herdr call for longer than the stale age still owns the pane.
+      { pid: process.pid, host: hostname(), at: s.w.clock - INBOX_LOCK_STALE_MS - 60_000 },
+    ]) {
       writeFileSync(lockPath(s), JSON.stringify(live));
       expect(await flushInbox(s.d, "w1:p2")).toBe("queued");
     }
