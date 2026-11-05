@@ -83,11 +83,35 @@ export function resolveTarget(d: Deps, target: string): string {
 // A pane with no running agent (`shell`) is never ready: text typed into a bare shell runs as a command (#66).
 const READY_TO_READ: readonly AgentStatus[] = ["idle", "done"];
 
-/** Delivers now when the pane can read; otherwise queues it for the duty loop (busy agents are never interrupted). */
-export async function send(d: Deps, target: string, text: string, from: string): Promise<"DELIVERED" | "QUEUED"> {
+export type SendResult = "DELIVERED" | "QUEUED" | "HELD";
+
+/**
+ * Delivers now when the pane can read; otherwise queues it for the duty loop (busy agents are never interrupted).
+ * The command-line path: an uncertain delivery is a result, never an error (see settled).
+ */
+export async function send(d: Deps, target: string, text: string, from: string): Promise<SendResult> {
+  return settled(sendOrThrow(d, target, text, from));
+}
+
+/** send for the duty and hourly loops: throws DeliveryUncertain, having recorded it, so they report the failure. */
+async function sendOrThrow(d: Deps, target: string, text: string, from: string): Promise<"DELIVERED" | "QUEUED"> {
   const paneId = resolveTarget(d, target);
   d.store.enqueue(paneId, { at: d.now(), from, text });
   return (await flushInbox(d, paneId)) === "delivered" ? "DELIVERED" : "QUEUED";
+}
+
+/**
+ * An uncertain delivery is already recorded on the queued message (#89), so on the command-line path it is a result:
+ * a sender who saw a failure would send again. `HELD`: it may or may not have reached the pane and is not resent.
+ * `QUEUED`: typed text that only waits for its Enter.
+ */
+async function settled<T extends SendResult | undefined>(delivery: Promise<T>): Promise<T | "QUEUED" | "HELD"> {
+  try {
+    return await delivery;
+  } catch (e) {
+    if (e instanceof DeliveryUncertain) return e.typed ? "QUEUED" : "HELD";
+    throw e;
+  }
 }
 
 /**
@@ -95,7 +119,7 @@ export async function send(d: Deps, target: string, text: string, from: string):
  * Only the CLI flag reaches here, never relayed content, and queued messages are never typed with it. If an agent
  * is in the pane, or appears before typing, the message takes the queued agent path instead.
  */
-export async function sendToShell(d: Deps, target: string, text: string, from: string): Promise<"DELIVERED" | "QUEUED"> {
+export async function sendToShell(d: Deps, target: string, text: string, from: string): Promise<SendResult> {
   const paneId = resolveTarget(d, target);
   if ((await d.herdr.status(paneId)) !== "shell") return send(d, target, text, from);
   if (await d.herdr.typeIntoShell(paneId, text)) return "DELIVERED";
@@ -123,7 +147,8 @@ export async function flushInbox(d: Deps, paneId: string): Promise<"delivered" |
     // An earlier pass typed these and only the Enter failed: press Enter, never type them again (#89).
     if (!(await d.herdr.submitTyped(paneId))) return "no-agent";
     settleInbox(d, paneId, typed);
-    return "delivered";
+    // Messages queued after the typed batch were not delivered by this Enter; they wait for the next pass.
+    return typed.length === queued.length ? "delivered" : "queued";
   }
   const body =
     queued.length === 1
@@ -186,12 +211,13 @@ async function screenShowsIdle(d: Deps, paneId: string): Promise<boolean> {
   }
 }
 
-export async function tellLead(d: Deps, text: string, from: string): Promise<void> {
+/** The lead delivery's result, or undefined when no lead is registered. Throws DeliveryUncertain like sendOrThrow. */
+export async function tellLead(d: Deps, text: string, from: string): Promise<"DELIVERED" | "QUEUED" | undefined> {
   if (!d.store.roles().lead) {
     process.stderr.write(`dori: no lead pane registered; message kept only in the lane log\n`);
-    return;
+    return undefined;
   }
-  await send(d, "lead", text, from);
+  return sendOrThrow(d, "lead", text, from);
 }
 
 // ---------- lanes ----------
@@ -238,7 +264,7 @@ function openLane(d: Deps, key: string): Lane {
   return lane;
 }
 
-export async function report(d: Deps, key: string, text: string, status?: "working" | "waiting"): Promise<void> {
+export async function report(d: Deps, key: string, text: string, status?: "working" | "waiting"): Promise<SendResult | undefined> {
   const lane = openLane(d, key);
   const now = d.now();
   lane.log.push({ at: now, kind: "report", text });
@@ -246,10 +272,10 @@ export async function report(d: Deps, key: string, text: string, status?: "worki
   lane.nudges = 0;
   if (status) lane.status = status;
   d.store.saveLane(lane);
-  await tellLead(d, `[REPORT ${key}${status === "waiting" ? " WAITING" : ""}] ${text}`, key);
+  return settled(tellLead(d, `[REPORT ${key}${status === "waiting" ? " WAITING" : ""}] ${text}`, key));
 }
 
-export async function ready(d: Deps, key: string, text: string, evidence: readonly string[]): Promise<void> {
+export async function ready(d: Deps, key: string, text: string, evidence: readonly string[]): Promise<SendResult | undefined> {
   if (evidence.length === 0) throw new Refusal("READY needs at least one --evidence link (a PR, a receipt, a file)");
   if (!text.trim()) throw new Refusal("READY needs the final answer text");
   const lane = openLane(d, key);
@@ -259,12 +285,13 @@ export async function ready(d: Deps, key: string, text: string, evidence: readon
   lane.lastActivityAt = now;
   lane.log.push({ at: now, kind: "ready", text });
   d.store.saveLane(lane);
-  await tellLead(d, `[READY ${key}] ${text}\nevidence: ${evidence.join(" ")}`, key);
+  const sent = await settled(tellLead(d, `[READY ${key}] ${text}\nevidence: ${evidence.join(" ")}`, key));
   d.usage.record({
     name: "dori.lane_ready",
     evidence_count: Math.min(evidence.length, 100),
     lane_minutes: Math.min(Math.floor((now - lane.createdAt) / 60_000), 10_080),
   });
+  return sent;
 }
 
 export async function done(d: Deps, key: string): Promise<void> {
@@ -340,7 +367,7 @@ export async function dutyTick(d: Deps): Promise<DutyEvent[]> {
       lane.log.push({ at: now, kind: "nudge", text: `idle ${Math.floor(idleMin)} min` });
       d.store.saveLane(lane);
       if (lane.nudges < NUDGE_MINUTES.length) {
-        await send(d, lane.key, prompt("nudge.md", { key: lane.key, minutes: String(Math.floor(idleMin)), dori: d.doriCmd }), "duty");
+        await sendOrThrow(d, lane.key, prompt("nudge.md", { key: lane.key, minutes: String(Math.floor(idleMin)), dori: d.doriCmd }), "duty");
         events.push({ lane: lane.key, action: `nudge-${lane.nudges}` });
       } else {
         await tellLead(d, `[ESCALATE ${lane.key}] idle ${Math.floor(idleMin)} min with no READY after ${lane.nudges - 1} nudges`, "duty");
