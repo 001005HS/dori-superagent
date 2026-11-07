@@ -102,7 +102,7 @@ Real work runs in its own herdr tab, called a lane. The protocol, with the reaso
 | `dori checkpoint` / `dori checkpoints` | a lane records each completed step and its remote receipts once, and reads them back on resume |
 | `dori verify-pr <owner/repo> <num>` | before a PR is called done: commit emails match the repo's identity, fixes come with a test or a `No test:` reason |
 | `dori claim-done` / `dori object-done` / `dori close` | the done flow |
-| `dori lesson add` / `list` / `mark` | keep what a lane learned about a repo; `launch` puts the current ones above the next brief there |
+| `dori lesson add` / `list` / `mark` | keep what a lane learned about a repo, or with `--global` a standing rule for every lane; `launch` puts the current ones above the next brief |
 | `dori worklog add` / `next` / `note` / `close` / `list` | the lead's record of owner requests, each with its source, next step, notes and result; survives compaction |
 | `dori pause` / `dori resume` | the owner said wait: no nudges, goal paused, running turn stopped; and back |
 | `dori watch` | the 5-minute auto-close watcher (run it as a persistent monitor) |
