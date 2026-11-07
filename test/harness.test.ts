@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { main } from "../src/cli.ts";
 import { done, dutyTick, mergeGate, ready, Refusal, report, review, send, startLane } from "../src/harness.ts";
@@ -299,11 +299,41 @@ describe("review + merge gate", () => {
     expect(w.usage.filter((e) => e.name === "dori.review_completed")).toHaveLength(2);
   });
 
-  test("a reviewer without a VERDICT line writes no receipt", async () => {
+  test("exit 0 without a VERDICT line: bounded stdout tail kept privately, no receipt", async () => {
     const { w, d } = setup();
     gh(w, []);
-    w.reviewer = () => ({ code: 0, stdout: "looks fine I guess" });
-    await expect(review(d, "o/r#8")).rejects.toThrow("no VERDICT");
+    const lines = Array.from({ length: 205 }, (_, i) => `line-${i + 1}`);
+    w.reviewer = () => ({ code: 0, stdout: lines.join("\n") });
+    const failure: unknown = await review(d, "o/r#8").then(() => undefined, (e: unknown) => e);
+    expect(failure).toBeInstanceOf(Error);
+    const files = readdirSync(join(d.store.root, "receipts")).filter((n) => n.endsWith(".noverdict.txt"));
+    expect(files).toHaveLength(1);
+    const name = files[0];
+    if (!name || !(failure instanceof Error)) throw new Error("missing diagnostic file or review error");
+    expect(name).toStartWith(`o__r_8@${head}`);
+    const diagnostic = join(d.store.root, "receipts", name);
+    expect(failure.message).toContain("no VERDICT");
+    expect(failure.message).toContain(diagnostic);
+    expect(statSync(diagnostic).mode & 0o777).toBe(0o600);
+    expect(readFileSync(diagnostic, "utf8").split("\n")).toEqual(lines.slice(5));
     expect(d.store.receipt("o/r#8", head)).toBeUndefined();
+  });
+
+  test("nonzero exit without a VERDICT line: stdout tail kept too, exit code in the error, no receipt", async () => {
+    const { w, d } = setup();
+    gh(w, []);
+    w.reviewer = () => ({ code: 9, stdout: "partial reviewer output" });
+    const failure: unknown = await review(d, "o/r#9").then(() => undefined, (e: unknown) => e);
+    expect(failure).toBeInstanceOf(Error);
+    const files = readdirSync(join(d.store.root, "receipts")).filter((n) => n.endsWith(".noverdict.txt"));
+    expect(files).toHaveLength(1);
+    const name = files[0];
+    if (!name || !(failure instanceof Error)) throw new Error("missing diagnostic file or review error");
+    const diagnostic = join(d.store.root, "receipts", name);
+    expect(failure.message).toContain("reviewer exited 9");
+    expect(failure.message).toContain(diagnostic);
+    expect(readFileSync(diagnostic, "utf8")).toBe("partial reviewer output");
+    expect(statSync(diagnostic).mode & 0o777).toBe(0o600);
+    expect(d.store.receipt("o/r#9", head)).toBeUndefined();
   });
 });

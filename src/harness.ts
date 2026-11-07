@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { cpus, freemem, loadavg, totalmem } from "node:os";
 import { join, resolve } from "node:path";
 import { DeliveryUncertain, Herdr, HerdrError, omoScreenIdle, shq, spawnExec, type AgentStatus, type Exec } from "./herdr.ts";
@@ -495,10 +496,18 @@ export async function review(d: Deps, prId: string, model?: string): Promise<{ v
   const text = prompt("review.md", { pr: pr.id, repo: pr.repo, number: String(pr.number), sha });
   const argv = ["-p", "--no-session", ...(model ? ["--model", model] : []), text];
   const res = await d.exec(d.agentCmd, argv);
-  if (res.code !== 0) throw new Error(`reviewer exited ${res.code}: ${res.stderr.trim()}`);
   const verdicts = [...res.stdout.matchAll(/^VERDICT:\s*(CLEAR|BLOCK)\b/gm)];
   const last = verdicts.at(-1);
-  if (!last) throw new Error("reviewer printed no VERDICT line; no receipt written");
+  if (!last) {
+    const name = `${pr.id.replaceAll("/", "__").replace("#", "_")}@${sha}-${randomUUID()}.noverdict.txt`;
+    const diagnostic = join(d.store.root, "receipts", name);
+    writeFileSync(diagnostic, res.stdout.split(/\r?\n/).slice(-200).join("\n"), { flag: "wx", mode: 0o600 });
+    const reason = res.code === 0
+      ? "reviewer printed no VERDICT line"
+      : `reviewer exited ${res.code}: ${res.stderr.trim() || "no VERDICT line in its output"}`;
+    throw new Error(`${reason}; no receipt written; reviewer output saved to ${diagnostic}`);
+  }
+  if (res.code !== 0) throw new Error(`reviewer exited ${res.code}: ${res.stderr.trim()}`);
   const verdict = last[1] as "CLEAR" | "BLOCK";
   d.store.saveReceipt({ pr: pr.id, sha, verdict, model: model ?? "default", at: d.now(), summary: res.stdout.trim().slice(-4000) });
   d.usage.record({ name: "dori.review_completed", verdict });
