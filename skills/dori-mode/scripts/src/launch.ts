@@ -2,6 +2,7 @@ import { fileURLToPath } from "node:url";
 
 import { type DoriConfig, fill } from "./config.ts";
 import type { FlowDeps } from "./done-flow.ts";
+import { laneGoalActive } from "./goal-record.ts";
 import { readScreen, statusLookup } from "./panes.ts";
 import { LANE_KEY, type Lane, RESERVED_LANE_KEY } from "./registry.ts";
 import { iso } from "./run.ts";
@@ -28,7 +29,8 @@ const STARTUP_FAILURE = /Cannot find module|All fallback models failed|No API ke
 // `goalMarker` is the agent's status text while a goal is active (omo: `Pursuing goal`). A lane that starts but never
 // sets its goal stops after its first turn, so a ready status alone is not a good start. The status line shares its row
 // with other extensions' status text, so the marker is matched in the footer (the last lines), never in agent output
-// that quotes it. An empty marker turns the check off.
+// that quotes it. An empty marker turns the check off. The footer is cut to the pane's width (a narrow pane shows
+// "Pur..."), so omo's own goal record for the lane's session counts too, whatever the width (#122).
 const GOAL_CHECKS = 6;
 const goalShown = (screen: string, marker: string): boolean =>
   screen.split("\n").filter((s) => s.trim()).slice(-3).join("\n").includes(marker);
@@ -144,8 +146,9 @@ const startLane = async (deps: FlowDeps, input: LaunchInput, draft: Lane, preamb
   const { status, error } = await statusLookup(deps.run, pane);
   if (status === "idle" || status === "working") {
     const marker = deps.config.goalMarker;
+    const hasGoal = (shown: string): boolean => goalShown(shown, marker) || laneGoalActive(deps.config.sessionsDir, cwd, input.key, started);
     let shown = screen;
-    for (let check = 0; marker && !goalShown(shown, marker); check++) {
+    for (let check = 0; marker && !hasGoal(shown); check++) {
       if (check === GOAL_CHECKS) return { lane, startup: `STARTUP_NO_GOAL ${input.key} ${pane}: the agent is running but shows no goal after ${Math.round((deps.clock.now() - started) / 1000)} s; last lines: ${lastLines(shown)}` };
       await deps.clock.sleep(10_000);
       shown = await readScreen(deps.run, pane, 40);
@@ -157,7 +160,7 @@ const startLane = async (deps: FlowDeps, input: LaunchInput, draft: Lane, preamb
       }
       // A late failure stops the agent. A working agent's own output may quote these phrases (a file or log it reads),
       // so only an idle agent with no goal is checked for one.
-      const failed = again.status === "idle" && !goalShown(shown, marker) ? STARTUP_FAILURE.exec(shown) : null;
+      const failed = again.status === "idle" && !hasGoal(shown) ? STARTUP_FAILURE.exec(shown) : null;
       if (failed) return { lane, startup: `STARTUP_ERROR ${input.key} ${pane}: ${failed[0]}` };
     }
     return { lane, startup: `STARTUP_OK ${input.key} ${pane}` };

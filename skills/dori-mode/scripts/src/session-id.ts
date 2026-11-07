@@ -31,6 +31,13 @@ const descendants = (table: readonly Proc[], root: number): Proc[] => {
 
 export const sessionDirFor = (sessionsDir: string, cwd: string): string => join(sessionsDir, `--${cwd.replace(/^\//, "").replace(/\//g, "-")}--`);
 
+/** The session id and creation time a session file name carries, or undefined for any other file. */
+export const sessionFileStart = (name: string): { readonly id: string; readonly at: number } | undefined => {
+  const m = SESSION_FILE.exec(name);
+  const at = m ? Date.parse(`${m[1]}:${m[2]}:${m[3]}.${m[4]}Z`) : Number.NaN;
+  return m?.[5] && !Number.isNaN(at) ? { id: m[5], at } : undefined;
+};
+
 export type SessionDeps = { readonly run: Runner; readonly sessionsDir: string; readonly listDir?: (dir: string) => readonly string[] };
 
 export const resolveSession = async (pane: string, cwd: string, table: readonly Proc[], deps: SessionDeps): Promise<SessionHit> => {
@@ -51,9 +58,8 @@ export const resolveSession = async (pane: string, cwd: string, table: readonly 
   if (Number.isNaN(started)) return { id: "", via: "none", pid: agent.pid };
   const list = deps.listDir ?? ((d: string) => { try { return readdirSync(d); } catch { return []; } });
   const near = list(sessionDirFor(deps.sessionsDir, cwd)).flatMap((name) => {
-    const m = SESSION_FILE.exec(name);
-    const at = m ? Date.parse(`${m[1]}:${m[2]}:${m[3]}.${m[4]}Z`) : Number.NaN;
-    return m?.[5] && at >= started - 5_000 && at <= started + START_WINDOW_MS ? [{ id: m[5], at }] : [];
+    const hit = sessionFileStart(name);
+    return hit && hit.at >= started - 5_000 && hit.at <= started + START_WINDOW_MS ? [hit] : [];
   }).sort((a, b) => a.at - b.at);
   return near[0] ? { id: near[0].id, via: "start-time", pid: agent.pid } : { id: "", via: "none", pid: agent.pid };
 };
