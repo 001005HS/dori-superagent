@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { need, one, USAGE, type Args } from "./cli.ts";
+import { need, one, USAGE, type Args } from "./cli-args.ts";
 import { shq } from "./delivery.ts";
-import { prompt, promptsDir, Refusal, type Deps } from "./harness.ts";
+import { prompt, promptsDir, type Deps } from "./harness.ts";
+import { Refusal } from "./refusal.ts";
 import { askCheckpoint, capture, type MigrateOpts, type Subject } from "./migrate-capture.ts";
 import { swapAgent, swapLoop } from "./migrate-swap.ts";
 import { refText } from "./refs.ts";

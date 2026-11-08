@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { dutyTick } from "../src/duty.ts";
-import { send } from "../src/harness.ts";
+import { send } from "../src/inbox.ts";
 import { report, startLane } from "../src/lanes.ts";
 import { setup } from "./harness-setup.ts";
 import { href } from "./fake.ts";

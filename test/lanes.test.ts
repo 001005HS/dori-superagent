@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { Refusal } from "../src/harness.ts";
+import { Refusal } from "../src/refusal.ts";
 import { done, ready, startLane } from "../src/lanes.ts";
 import { href } from "./fake.ts";
 import { setup } from "./harness-setup.ts";

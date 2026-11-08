@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { shq } from "./delivery.ts";
-import { prompt, Refusal, settled, tellLead, type Deps, type SendResult } from "./harness.ts";
+import { prompt, type Deps } from "./harness.ts";
+import { settled, tellLead, type SendResult } from "./inbox.ts";
+import { Refusal } from "./refusal.ts";
 import { runHook } from "./hooks.ts";
 import { refText } from "./refs.ts";
 import { groupId } from "./runtime/group.ts";

@@ -1,17 +1,15 @@
 import { readFileSync } from "node:fs";
 import { cpus, loadavg } from "node:os";
 import { join, resolve } from "node:path";
-import { DeliveryUncertain, shq } from "./delivery.ts";
+import { shq } from "./delivery.ts";
 import { memFreePct } from "./host.ts";
-import { flushInbox } from "./inbox.ts";
 import { type Exec, spawnExec } from "./runtime/exec.ts";
 import { HcRuntime } from "./runtime/hc/index.ts";
 import { HerdrRuntime } from "./runtime/herdr/index.ts";
 import { Runtimes } from "./runtime/registry.ts";
 import { type RuntimeChoice, readRuntimeChoice } from "./runtime/select.ts";
-import { parseRef, type SessionRef } from "./runtime/types.ts";
 import { Store } from "./store.ts";
-import { type HostLoad, KEY_RE, RESERVED_KEYS, type Role, reservedKey } from "./store-types.ts";
+import { type HostLoad, KEY_RE, type Role, reservedKey } from "./store-types.ts";
 import { Telemetry, type Usage } from "./telemetry.ts";
 
 export { KEY_RE, reservedKey };
@@ -60,83 +58,11 @@ export const defaultDeps = (): Deps => {
   };
 };
 
-export class Refusal extends Error {}
-
 /** `DORI_PROMPTS_DIR` when set, else the repo's `prompts/`. */
 export const promptsDir = (): string => process.env["DORI_PROMPTS_DIR"] || PROMPTS;
 
 export const prompt = (name: string, vars: Record<string, string>): string =>
   readFileSync(join(promptsDir(), name), "utf8").replace(/\{\{(\w+)\}\}/g, (_, k: string) => vars[k] ?? `{{${k}}}`);
 
-const isRole = (target: string): target is Role => (ROLES_ALL as readonly string[]).includes(target);
-
-/**
- * Where a send goes, in this order: a prefixed ref (`herdr:w1:p3`, `hc:t7`), a role, an open lane key, a bare herdr
- * pane id (`w1:p3`). A lane named `t7` is that lane; the hc terminal t7 is `hc:t7`.
- */
-export function resolveTarget(d: Deps, target: string): SessionRef {
-  if (target.startsWith("herdr:") || target.startsWith("hc:")) {
-    const ref = parseRef(target);
-    if (ref) return ref;
-    throw new Refusal(`${target} is not a session ref (herdr:w1:p3 or hc:t7)`);
-  }
-  if (isRole(target)) {
-    const ref = d.store.roles()[target];
-    if (!ref) throw new Refusal(`no ${target} session registered (dori role ${target} <ref>)`);
-    return ref;
-  }
-  const lane = d.store.lane(target);
-  if (lane && lane.status !== "done") return lane.sessionRef;
-  const bare = parseRef(target);
-  if (bare) return bare;
-  throw new Refusal(`unknown target ${target}: not a session ref, role or open lane`);
-}
-
-export type SendResult = "DELIVERED" | "QUEUED" | "HELD";
-
-/**
- * Delivers now when the pane can read; otherwise queues it for the duty loop (busy agents are never interrupted).
- * The command-line path: an uncertain delivery is a result, never an error (see settled).
- */
-export async function send(d: Deps, target: string, text: string, from: string): Promise<SendResult> {
-  return settled(sendOrThrow(d, target, text, from));
-}
-
-/** send for the duty and hourly loops: throws DeliveryUncertain, having recorded it, so they report the failure. */
-export async function sendOrThrow(
-  d: Deps,
-  target: string,
-  text: string,
-  from: string,
-): Promise<"DELIVERED" | "QUEUED"> {
-  const ref = resolveTarget(d, target);
-  d.store.enqueue(ref, { at: d.now(), from, text });
-  return (await flushInbox(d, ref)) === "delivered" ? "DELIVERED" : "QUEUED";
-}
-
-/**
- * An uncertain delivery is already recorded on the queued message (#89), so on the command-line path it is a result:
- * a sender who saw a failure would send again. `HELD`: it may or may not have reached the pane and is not resent.
- * `QUEUED`: typed text that only waits for its Enter.
- */
-export async function settled<T extends SendResult | undefined>(delivery: Promise<T>): Promise<T | "QUEUED" | "HELD"> {
-  try {
-    return await delivery;
-  } catch (e) {
-    if (e instanceof DeliveryUncertain) return e.typed ? "QUEUED" : "HELD";
-    throw e;
-  }
-}
-
-/** The lead delivery's result, or undefined when no lead is registered. Throws DeliveryUncertain like sendOrThrow. */
-export async function tellLead(d: Deps, text: string, from: string): Promise<"DELIVERED" | "QUEUED" | undefined> {
-  if (!d.store.roles().lead) {
-    process.stderr.write(`dori: no lead pane registered; message kept only in the lane log\n`);
-    return undefined;
-  }
-  return sendOrThrow(d, "lead", text, from);
-}
-
 /** The roles `dori role` registers by hand; `dori up` also registers the two loop sessions. */
 export const ROLES: readonly Role[] = ["lead", "duty"];
-const ROLES_ALL: readonly Role[] = RESERVED_KEYS;

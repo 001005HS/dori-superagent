@@ -1,5 +1,5 @@
 import { expect } from "bun:test";
-import { send } from "../src/harness.ts";
+import { send } from "../src/inbox.ts";
 import { World, href } from "./fake.ts";
 
 export const NOT_READY = '{"error":{"code":"agent_not_ready"}}';
