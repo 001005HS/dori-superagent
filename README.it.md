@@ -9,11 +9,11 @@ Il tuo ingegnere 24/7, nella chat che usi già.
 [English](README.md) | [简体中文](README.zh.md) | [Deutsch](README.de.md) | [日本語](README.ja.md) | Italiano
 
 [![CI](https://github.com/sisyphuslabs/dori-superagent/actions/workflows/ci.yml/badge.svg)](https://github.com/sisyphuslabs/dori-superagent/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: SUL-1.0](https://img.shields.io/badge/license-SUL--1.0-blue.svg)](LICENSE)
 
 Dori vive nel tuo Slack, Discord o Telegram. Gli dici cosa fare in un thread, lui dà al lavoro una sessione di coding agent tutta sua e ti risponde quando il lavoro è dimostrato concluso: una PR con merge, una issue chiusa, una versione pubblicata. Tra una richiesta e l'altra trova da solo il compito successivo. Tutto qui.
 
-Questo repository, `dori-superagent`, è Dori con licenza MIT. Dori mode (`skills/dori-mode`) è il bot con cui parli: una skill per il tuo coding agent più una CLI `dori` che apre, segue e chiude le sessioni che fanno il lavoro, e parla con Slack, Discord e Telegram.
+Questo repository, `dori-superagent`, è Dori con la Sustainable Use License. Dori mode (`skills/dori-mode`) è il bot con cui parli: una skill per il tuo coding agent più una CLI `dori` che apre, segue e chiude le sessioni che fanno il lavoro, e parla con Slack, Discord e Telegram.
 
 L'harness (`src/`) è la sala macchine dietro di lui: una sessione lead, un duty loop, un hourly loop, tante lane quante l'host ne regge e un merge gate, in circa 3.500 righe di TypeScript su [Bun](https://bun.sh) senza dipendenze a runtime. Gira su [herdr](https://github.com/herdrdev/herdr), il runtime da terminale in cui vivono le sessioni, e su [omo](https://github.com/code-yeongyu/oh-my-openagent), il coding agent, che ha 70.8k stelle su GitHub.
 
@@ -38,16 +38,16 @@ Slack, Discord e Telegram sono implementati in `skills/dori-mode/scripts/src/mes
 | Pubblicare e modificare sul posto | Sì, e risposte nei thread | Sì; le menzioni nel testo non notificano mai nessuno | Sì, testo semplice o HTML con tabelle |
 | Thread | Thread di Slack | Avvia, rinomina e archivia thread | Topic del forum: crea, rinomina, chiudi, riapri |
 | Digitazione e streaming | | Indicatore di digitazione | Indicatore di digitazione, e una bozza che cresce mentre la risposta viene scritta, partendo da "Thinking…" |
-| In entrata, come arrivano i tuoi messaggi | `dori inbound slack`: la vista Threads, ogni thread in cui Dori ha scritto (con tag o no), e DM, DM di gruppo e menzioni non letti | Il watch del tuo strumento di messaggistica | `dori inbound telegram`: un long poll che lascia passare solo i messaggi del proprietario, i DM e un topic di gruppo, modifiche incluse, media come file id |
+| In entrata, come arrivano i tuoi messaggi | `dori inbound slack`: la vista Threads, ogni thread in cui Dori ha scritto (con tag o no), e DM, DM di gruppo e menzioni non letti | Il watch del tuo strumento di messaggistica | `dori inbound telegram`: un long poll che lascia passare solo i messaggi del proprietario, i DM e un gruppo (solo uno dei suoi topic quando `DORI_TELEGRAM_TOPIC_ID` è impostato), modifiche incluse, media come file id |
 | Presenza | `dori presence slack` mantiene un account membro visibile online | `dori presence discord` si identifica sul gateway come online | |
 | File | Upload dalla libreria | | File id sui media in entrata |
 | Token | `DORI_SLACK_TOKEN`, più `DORI_SLACK_COOKIE` per un user token | `DORI_DISCORD_TOKEN` | `DORI_TELEGRAM_TOKEN`, `DORI_TELEGRAM_OWNER_ID`, e facoltativamente `DORI_TELEGRAM_GROUP_ID` e `DORI_TELEGRAM_TOPIC_ID` |
 
 Su Slack scegli in fase di setup come appare Dori. Con un user token è un vero membro: un posto a pagamento, vede tutto quello che vede quel membro e può tenere il pallino verde di online. Con un bot token è un'app: nessun posto, solo i canali in cui viene invitato, entro gli scope che concedi.
 
-La creazione del bot e il completamento del suo login passano da [agent-messenger](https://github.com/agent-messenger/agent-messenger). Gli helper della tabella chiamano direttamente l'API di ogni piattaforma, ritentano sui rate limit con il tempo di attesa indicato dal server e rifiutano qualsiasi testo che contenga `$(`, perché il testo di un messaggio è un dato e non passa mai da una shell. Su ogni piattaforma, `dori transcribe` trasforma una nota vocale in testo con il comando che configuri come `hooks.transcribe`.
+La creazione del bot e il completamento del suo login passano da [agent-messenger](https://github.com/agent-messenger/agent-messenger). Gli helper della tabella chiamano direttamente l'API di ogni piattaforma, ritentano sui rate limit con il tempo di attesa indicato dal server e rifiutano qualsiasi testo che contenga `$(`, perché il testo di un messaggio è un dato e non passa mai da una shell. Su ogni piattaforma, `dori transcribe` trasforma una nota vocale in testo con il comando che configuri come `hooks.transcribe`. Questo repository non supporta Teams, WhatsApp, LINE, WeChat, iMessage, KakaoTalk o Lark, e `dori send` rifiuta un canale che non conosce.
 
-`dori send <slack|telegram|discord> --to TARGET --text TEXT [--thread ID] [--edit ID]` pubblica o modifica un messaggio dalla shell. Le stesse classi (`Slack`, `Discord`, `Telegram`) sono moduli importabili che ricevono come argomenti il client HTTP, l'orologio e i timer, ed è così che i test girano senza rete.
+`dori send <slack|telegram|discord> --to TARGET --text TEXT [--thread ID] [--edit ID]` pubblica o modifica un messaggio dalla shell. Le stesse classi (`Slack`, `Discord`, `Telegram`) sono moduli importabili che ricevono come argomenti il client HTTP e l'orologio (gli helper per typing e presenza ricevono i timer), ed è così che i test girano senza rete.
 
 ## Avvio rapido
 
@@ -109,6 +109,8 @@ dori merge owner/repo#12 --dry-run   # MERGE_OK ... (dry run), or MERGE_REFUSED 
 dori merge owner/repo#12             # gh pr merge --squash --match-head-commit <sha>
 dori done fix-flaky-login            # closes the lane's pane; only a READY lane can be closed
 ```
+
+`bun src/cli.ts` senza argomenti stampa ogni comando con i suoi flag.
 
 ## Come funziona l'harness
 
@@ -284,6 +286,10 @@ I test dell'harness girano contro un herdr e un gh finti, con un orologio che i 
 
 L'harness è la versione minima, non il nostro stack di produzione. Lasciati fuori di proposito: la mesh tra macchine, lo scheduling degli heavy slot, i bridge verso chat e ticket tracker e le receipt per intere suite di test. Qui c'è la parte che gira solo con herdr e omo: ruoli, lane, inbox, duty loop, hourly loop e backlog, e il gate di review e merge. Dori mode è una CLI separata con i propri componenti di messaggistica, host guard e runner per heavy slot; l'harness non importa nulla da lì.
 
+## Contribuire
+
+Ogni contributore firma una volta il [Contributor License Agreement](CLA.md), commentando `I have read the CLA Document and I hereby sign the CLA` sulla sua prima pull request; il check CLA Assistant lo registra. I gate, i comandi di test e le regole per le pull request sono in [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Licenza
 
-MIT, vedi [LICENSE](LICENSE).
+La [Sustainable Use License](LICENSE) versione 1.0, la stessa licenza di omo, con i componenti di terze parti sotto le rispettive licenze. Copre l'uso interno della tua organizzazione e l'uso non commerciale o personale; l'uso commerciale richiede una licenza dal proprietario. I commit precedenti a `ba96abf` sono usciti con licenza MIT.

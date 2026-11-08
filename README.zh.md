@@ -9,11 +9,11 @@
 [English](README.md) | 简体中文 | [Deutsch](README.de.md) | [日本語](README.ja.md) | [Italiano](README.it.md)
 
 [![CI](https://github.com/sisyphuslabs/dori-superagent/actions/workflows/ci.yml/badge.svg)](https://github.com/sisyphuslabs/dori-superagent/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: SUL-1.0](https://img.shields.io/badge/license-SUL--1.0-blue.svg)](LICENSE)
 
 Dori 住在你的 Slack、Discord 或 Telegram 里。你在一个 thread 里告诉他要做什么，他给这项工作开一个专属的 coding agent 会话，等工作被证明完成后再回复你：一个已 merge 的 PR，一个已关闭的 issue，一个已发布的版本。两次请求之间，他会自己去找下一项任务。整套东西就这么多。
 
-这个仓库 `dori-superagent` 就是 Dori，采用 MIT 许可证。Dori mode（`skills/dori-mode`）是你对话的那个 bot：它由一个给你的 coding agent 用的 skill 和一个 `dori` CLI 组成，CLI 负责开启、跟踪和关闭干活的会话，也负责和 Slack、Discord、Telegram 通信。
+这个仓库 `dori-superagent` 就是 Dori，采用 Sustainable Use License。Dori mode（`skills/dori-mode`）是你对话的那个 bot：它由一个给你的 coding agent 用的 skill 和一个 `dori` CLI 组成，CLI 负责开启、跟踪和关闭干活的会话，也负责和 Slack、Discord、Telegram 通信。
 
 harness（`src/`）是他背后的机房：一个 lead 会话，一个 duty loop，一个 hourly loop，宿主机能承载多少 lane 就开多少 lane，再加一个 merge gate。全部大约 3,500 行 TypeScript，跑在 [Bun](https://bun.sh) 上，没有运行时依赖。它运行在 [herdr](https://github.com/herdrdev/herdr) 和 [omo](https://github.com/code-yeongyu/oh-my-openagent) 之上。herdr 是会话所在的终端运行时，omo 是 coding agent，在 GitHub 上有 70.8k 星。
 
@@ -38,16 +38,16 @@ Slack、Discord 和 Telegram 都在 `skills/dori-mode/scripts/src/messenger/` �
 | 发送并原地编辑 | 支持，并可在 thread 中回复 | 支持；文本中的提及不会通知任何人 | 支持，纯文本或带表格的 HTML |
 | Thread | Slack thread | 创建、重命名和归档 thread | 论坛 topic：创建、重命名、关闭、重新打开 |
 | 输入状态与流式输出 | | 输入状态提示 | 输入状态提示，以及一份随回答写出而增长的草稿，开头是 "Thinking…" |
-| 入站，你的消息如何到达 | `dori inbound slack`：Threads 视图，Dori 发过言的每个 thread（无论是否被标记），以及未读的私信、群组私信和提及 | 你的消息工具自带的监听 | `dori inbound telegram`：一个长轮询，只放行所有者的消息、私信和一个群组 topic，包括编辑，媒体以 file id 形式传递 |
+| 入站，你的消息如何到达 | `dori inbound slack`：Threads 视图，Dori 发过言的每个 thread（无论是否被标记），以及未读的私信、群组私信和提及 | 你的消息工具自带的监听 | `dori inbound telegram`：一个长轮询，只放行所有者的消息、私信和一个群组（设置了 `DORI_TELEGRAM_TOPIC_ID` 时只放行其中一个 topic），包括编辑，媒体以 file id 形式传递 |
 | 在线状态 | `dori presence slack` 让一个成员账号保持在线显示 | `dori presence discord` 在 gateway 上以在线身份登录 | |
 | 文件 | 从库中上传 | | 入站媒体的 file id |
 | Token | `DORI_SLACK_TOKEN`，使用用户 token 时另加 `DORI_SLACK_COOKIE` | `DORI_DISCORD_TOKEN` | `DORI_TELEGRAM_TOKEN`、`DORI_TELEGRAM_OWNER_ID`，可选 `DORI_TELEGRAM_GROUP_ID` 和 `DORI_TELEGRAM_TOPIC_ID` |
 
 在 Slack 上，你在设置时选择 Dori 以什么身份出现。用用户 token，他就是一个真正的成员：占一个付费席位，能看到该成员看到的一切，还能挂着绿色的在线圆点。用 bot token，他就是一个应用：不占席位，只能看到被邀请进的频道，权限限于你授予的 scope。
 
-创建 bot 和完成登录要通过 [agent-messenger](https://github.com/agent-messenger/agent-messenger)。表中的辅助模块直接调用各平台的 API，遇到限流时按服务器给出的等待时间重试，并拒绝任何包含 `$(` 的文本，因为消息文本是数据，从不经过 shell。在所有平台上，`dori transcribe` 都会通过你配置为 `hooks.transcribe` 的命令把语音消息转成文字。
+创建 bot 和完成登录要通过 [agent-messenger](https://github.com/agent-messenger/agent-messenger)。表中的辅助模块直接调用各平台的 API，遇到限流时按服务器给出的等待时间重试，并拒绝任何包含 `$(` 的文本，因为消息文本是数据，从不经过 shell。在所有平台上，`dori transcribe` 都会通过你配置为 `hooks.transcribe` 的命令把语音消息转成文字。这个仓库不支持 Teams、WhatsApp、LINE、WeChat、iMessage、KakaoTalk 或 Lark，`dori send` 会拒绝它不认识的渠道。
 
-`dori send <slack|telegram|discord> --to TARGET --text TEXT [--thread ID] [--edit ID]` 可以从 shell 发送或编辑消息。同样的类（`Slack`、`Discord`、`Telegram`）也是可导入的模块，它们以参数形式接收 HTTP 客户端、时钟和定时器，测试正是靠这一点在不联网的情况下运行。
+`dori send <slack|telegram|discord> --to TARGET --text TEXT [--thread ID] [--edit ID]` 可以从 shell 发送或编辑消息。同样的类（`Slack`、`Discord`、`Telegram`）也是可导入的模块，它们以参数形式接收 HTTP 客户端和时钟（typing 和 presence 辅助函数接收定时器），测试正是靠这一点在不联网的情况下运行。
 
 ## 快速开始
 
@@ -109,6 +109,8 @@ dori merge owner/repo#12 --dry-run   # MERGE_OK ... (dry run), or MERGE_REFUSED 
 dori merge owner/repo#12             # gh pr merge --squash --match-head-commit <sha>
 dori done fix-flaky-login            # closes the lane's pane; only a READY lane can be closed
 ```
+
+不带参数运行 `bun src/cli.ts` 会打印每条命令和它的参数。
 
 ## harness 如何工作
 
@@ -284,6 +286,10 @@ harness 的测试在一个假的 herdr 和 gh 上运行，时钟由测试推进�
 
 harness 是最小版本，不是我们的生产栈。有意省略的部分：跨机器网格、heavy-slot 调度、聊天和工单跟踪系统的桥接，以及整套测试的 receipt。只依靠 herdr 和 omo 就能运行的部分都在这里：角色、lane、inbox、duty loop、hourly loop 和 backlog，以及 review 和 merge gate。Dori mode 是一个独立的 CLI，有自己的消息组件、host guard 和 heavy-slot runner；harness 不从它导入任何东西。
 
+## 参与贡献
+
+每位贡献者只需签署一次[贡献者许可协议](CLA.md)：在第一个 pull request 下评论 `I have read the CLA Document and I hereby sign the CLA`，CLA Assistant 检查会记录下来。各项门禁、测试命令和 pull request 规则见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
 ## 许可证
 
-MIT，见 [LICENSE](LICENSE)。
+[Sustainable Use License](LICENSE) 1.0 版，与 omo 使用的许可证相同，第三方组件遵循各自的许可证。它覆盖你自己的内部业务用途以及非商业或个人用途；商业用途需要向所有者取得许可。`ba96abf` 之前的提交以 MIT 许可证发布。

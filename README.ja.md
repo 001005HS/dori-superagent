@@ -9,11 +9,11 @@
 [English](README.md) | [简体中文](README.zh.md) | [Deutsch](README.de.md) | 日本語 | [Italiano](README.it.md)
 
 [![CI](https://github.com/sisyphuslabs/dori-superagent/actions/workflows/ci.yml/badge.svg)](https://github.com/sisyphuslabs/dori-superagent/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: SUL-1.0](https://img.shields.io/badge/license-SUL--1.0-blue.svg)](LICENSE)
 
 DoriはSlack、Discord、Telegramに住んでいます。スレッドでやってほしいことを書くと、Doriはその仕事専用のコーディングエージェントのセッションを用意し、作業が完了したと証明できた時点で返信します。証明とは、マージされたPR、クローズされたissue、公開されたバージョンのことです。依頼がない間は、Doriが次のタスクを自分で見つけます。仕組みはこれだけです。
 
-このリポジトリ `dori-superagent` は、MITライセンスで公開しているDoriです。Dori mode（`skills/dori-mode`）は、あなたが話しかけるボットです。コーディングエージェント用のスキルと `dori` CLIで構成されていて、CLIは作業するセッションを開き、追跡し、閉じます。Slack、Discord、Telegramとのやり取りもこのCLIが担います。
+このリポジトリ `dori-superagent` は、Sustainable Use Licenseで公開しているDoriです。Dori mode（`skills/dori-mode`）は、あなたが話しかけるボットです。コーディングエージェント用のスキルと `dori` CLIで構成されていて、CLIは作業するセッションを開き、追跡し、閉じます。Slack、Discord、Telegramとのやり取りもこのCLIが担います。
 
 ハーネス（`src/`）はDoriの裏側にある機械室です。リードセッション（lead）がひとつ、当番ループ（duty loop）、毎時ループ（hourly loop）、ホストが支えられる数だけのレーン（lane）、そしてマージゲートで構成されます。[Bun](https://bun.sh) 上のTypeScript約3,500行で、ランタイム依存はありません。セッションが動くターミナルランタイムの [herdr](https://github.com/herdrdev/herdr) と、GitHubで70.8kスターを持つコーディングエージェントの [omo](https://github.com/code-yeongyu/oh-my-openagent) の上で動きます。
 
@@ -38,16 +38,16 @@ Slack、Discord、Telegramは `skills/dori-mode/scripts/src/messenger/` に実�
 | 投稿とその場での編集 | 対応、スレッドへの返信も可能 | 対応、本文中のメンションで誰かに通知が飛ぶことはありません | 対応、プレーンテキストか表付きのHTML |
 | スレッド | Slackのスレッド | スレッドの作成、名前変更、アーカイブ | フォーラムのトピック: 作成、名前変更、クローズ、再オープン |
 | 入力中表示とストリーミング | | 入力中インジケーター | 入力中インジケーターと、回答を書く間に伸びていく下書き（最初は "Thinking…"） |
-| 受信、あなたのメッセージの届き方 | `dori inbound slack`: スレッドビュー、Doriが投稿したすべてのスレッド（タグの有無を問わず）、未読のDM、グループDM、メンション | 使っているメッセンジャーツールの監視機能 | `dori inbound telegram`: オーナーのメッセージ、DM、ひとつのグループトピックだけを通すロングポーリング。編集も含み、メディアはファイルIDで届きます |
+| 受信、あなたのメッセージの届き方 | `dori inbound slack`: スレッドビュー、Doriが投稿したすべてのスレッド（タグの有無を問わず）、未読のDM、グループDM、メンション | 使っているメッセンジャーツールの監視機能 | `dori inbound telegram`: オーナーのメッセージ、DM、ひとつのグループ（`DORI_TELEGRAM_TOPIC_ID` を設定した場合はそのトピックひとつ）だけを通すロングポーリング。編集も含み、メディアはファイルIDで届きます |
 | プレゼンス | `dori presence slack` がメンバーアカウントをオンライン表示に保ちます | `dori presence discord` がゲートウェイにオンラインとして接続します | |
 | ファイル | ライブラリからアップロード | | 受信メディアのファイルID |
 | トークン | `DORI_SLACK_TOKEN`、ユーザートークンの場合は `DORI_SLACK_COOKIE` も | `DORI_DISCORD_TOKEN` | `DORI_TELEGRAM_TOKEN`、`DORI_TELEGRAM_OWNER_ID`、必要に応じて `DORI_TELEGRAM_GROUP_ID` と `DORI_TELEGRAM_TOPIC_ID` |
 
 Slackでは、Doriをどう見せるかをセットアップ時に選びます。ユーザートークンならDoriは本物のメンバーです。有料のシートを使い、そのメンバーが見えるものはすべて見え、緑のオンライン表示も保てます。ボットトークンならDoriはアプリです。シートは不要で、招待されたチャンネルだけを、付与したスコープの範囲で扱います。
 
-ボットの作成とログインの仕上げは [agent-messenger](https://github.com/agent-messenger/agent-messenger) で行います。表のヘルパーは各プラットフォームのAPIを直接呼び、レート制限にはサーバーが示す待ち時間で再試行し、`$(` を含むテキストは拒否します。メッセージ本文はデータであって、シェルを通ることはないからです。どのプラットフォームでも、`dori transcribe` は `hooks.transcribe` に設定したコマンドでボイスメモをテキストに変換します。
+ボットの作成とログインの仕上げは [agent-messenger](https://github.com/agent-messenger/agent-messenger) で行います。表のヘルパーは各プラットフォームのAPIを直接呼び、レート制限にはサーバーが示す待ち時間で再試行し、`$(` を含むテキストは拒否します。メッセージ本文はデータであって、シェルを通ることはないからです。どのプラットフォームでも、`dori transcribe` は `hooks.transcribe` に設定したコマンドでボイスメモをテキストに変換します。このリポジトリはTeams、WhatsApp、LINE、WeChat、iMessage、KakaoTalk、Larkには対応しておらず、`dori send` は知らないチャンネルを拒否します。
 
-`dori send <slack|telegram|discord> --to TARGET --text TEXT [--thread ID] [--edit ID]` で、シェルからメッセージを投稿または編集できます。同じクラス（`Slack`、`Discord`、`Telegram`）はインポート可能なモジュールでもあり、HTTPクライアント、時計、タイマーを引数で受け取ります。テストがネットワークなしで動くのはこのためです。
+`dori send <slack|telegram|discord> --to TARGET --text TEXT [--thread ID] [--edit ID]` で、シェルからメッセージを投稿または編集できます。同じクラス（`Slack`、`Discord`、`Telegram`）はインポート可能なモジュールでもあり、HTTPクライアントと時計を引数で受け取ります（タイピングとプレゼンスのヘルパーがタイマーを受け取ります）。テストがネットワークなしで動くのはこのためです。
 
 ## クイックスタート
 
@@ -109,6 +109,8 @@ dori merge owner/repo#12 --dry-run   # MERGE_OK ... (dry run), or MERGE_REFUSED 
 dori merge owner/repo#12             # gh pr merge --squash --match-head-commit <sha>
 dori done fix-flaky-login            # closes the lane's pane; only a READY lane can be closed
 ```
+
+引数なしで `bun src/cli.ts` を実行すると、すべてのコマンドとそのフラグが表示されます。
 
 ## ハーネスの仕組み
 
@@ -284,6 +286,10 @@ bun run ci                                        # biome, tsc, knip, the 250-li
 
 ハーネスは最小版で、私たちの本番スタックではありません。意図して外したものは、マシンをまたぐメッシュ、重いスロットのスケジューリング、チャットとチケットトラッカーのブリッジ、テストスイート全体に対するレシートです。herdrとomoだけで動く部分はここにあります。役割、レーン、インボックス、当番ループ、毎時ループとバックログ、レビューとマージのゲートです。Dori modeは独自のメッセンジャー部品、ホストガード、重いスロットのランナーを持つ別のCLIで、ハーネスはそこから何もインポートしません。
 
+## コントリビュート
+
+コントリビューターは最初のプルリクエストに `I have read the CLA Document and I hereby sign the CLA` とコメントして、[Contributor License Agreement](CLA.md) に一度だけ署名します。CLA Assistantのチェックがそれを記録します。ゲート、テストコマンド、プルリクエストのルールは [CONTRIBUTING.md](CONTRIBUTING.md) にあります。
+
 ## ライセンス
 
-MIT、[LICENSE](LICENSE) を参照してください。
+[Sustainable Use License](LICENSE) バージョン1.0です。omoと同じライセンスで、サードパーティのコンポーネントはそれぞれのライセンスに従います。自社内での業務利用と、非商用または個人での利用を対象とし、商用利用には所有者のライセンスが必要です。`ba96abf` より前のコミットはMITライセンスで公開されています。
