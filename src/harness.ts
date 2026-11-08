@@ -1,11 +1,17 @@
 import { readFileSync } from "node:fs";
 import { cpus, loadavg } from "node:os";
 import { join, resolve } from "node:path";
-import { DeliveryUncertain, Herdr, shq, spawnExec, type Exec } from "./herdr.ts";
+import { DeliveryUncertain, shq } from "./delivery.ts";
 import { memFreePct } from "./host.ts";
 import { flushInbox } from "./inbox.ts";
+import { type Exec, spawnExec } from "./runtime/exec.ts";
+import { HcRuntime } from "./runtime/hc/index.ts";
+import { HerdrRuntime } from "./runtime/herdr/index.ts";
+import { Runtimes } from "./runtime/registry.ts";
+import { type RuntimeChoice, readRuntimeChoice } from "./runtime/select.ts";
+import { parseRef, type SessionRef } from "./runtime/types.ts";
 import { Store } from "./store.ts";
-import { KEY_RE, reservedKey, type HostLoad, type Role } from "./store-types.ts";
+import { type HostLoad, KEY_RE, RESERVED_KEYS, type Role, reservedKey } from "./store-types.ts";
 import { Telemetry, type Usage } from "./telemetry.ts";
 
 export { KEY_RE, reservedKey };
@@ -15,7 +21,10 @@ const CLI = resolve(import.meta.dir, "cli.ts");
 
 export type Deps = {
   readonly store: Store;
-  readonly herdr: Herdr;
+  /** The session runtimes: `default` opens new sessions, `for(ref)` reaches a stored one on its own runtime. */
+  readonly runtimes: Runtimes;
+  /** Which runtime new sessions open on, and why (`dori status` prints it). Throws when none can be chosen. */
+  readonly choice: () => RuntimeChoice;
   readonly exec: Exec;
   readonly now: () => number;
   readonly agentCmd: string;
@@ -24,11 +33,24 @@ export type Deps = {
   readonly usage: Usage;
 };
 
+/** The runtime is chosen on first use, so commands that open or reach no session work without one installed. */
 export const defaultDeps = (): Deps => {
   const store = new Store();
+  let chosen: RuntimeChoice | undefined;
+  let runtimes: Runtimes | undefined;
+  const choice = (): RuntimeChoice =>
+    (chosen ??= readRuntimeChoice({ env: process.env, configPath: join(store.root, "config.json") }));
   return {
     store,
-    herdr: new Herdr(),
+    get runtimes() {
+      // The choice is made only when a NEW session is opened: a stored session's own runtime needs none.
+      runtimes ??= new Runtimes(
+        () => choice().kind,
+        (k) => (k === "hc" ? new HcRuntime(spawnExec) : new HerdrRuntime(spawnExec, process.env["DORI_HERDR_SESSION"])),
+      );
+      return runtimes;
+    },
+    choice,
     exec: spawnExec,
     now: Date.now,
     agentCmd: process.env["DORI_AGENT_CMD"] ?? "omo",
@@ -46,17 +68,28 @@ export const promptsDir = (): string => process.env["DORI_PROMPTS_DIR"] || PROMP
 export const prompt = (name: string, vars: Record<string, string>): string =>
   readFileSync(join(promptsDir(), name), "utf8").replace(/\{\{(\w+)\}\}/g, (_, k: string) => vars[k] ?? `{{${k}}}`);
 
-export function resolveTarget(d: Deps, target: string): string {
-  if (/^w[0-9A-Za-z]+:p[0-9A-Za-z]+$/.test(target)) return target;
-  const roles = d.store.roles();
-  if (target === "lead" || target === "duty") {
-    const pane = roles[target];
-    if (!pane) throw new Refusal(`no ${target} pane registered (dori role ${target} <pane>)`);
-    return pane;
+const isRole = (target: string): target is Role => (ROLES_ALL as readonly string[]).includes(target);
+
+/**
+ * Where a send goes, in this order: a prefixed ref (`herdr:w1:p3`, `hc:t7`), a role, an open lane key, a bare herdr
+ * pane id (`w1:p3`). A lane named `t7` is that lane; the hc terminal t7 is `hc:t7`.
+ */
+export function resolveTarget(d: Deps, target: string): SessionRef {
+  if (target.startsWith("herdr:") || target.startsWith("hc:")) {
+    const ref = parseRef(target);
+    if (ref) return ref;
+    throw new Refusal(`${target} is not a session ref (herdr:w1:p3 or hc:t7)`);
+  }
+  if (isRole(target)) {
+    const ref = d.store.roles()[target];
+    if (!ref) throw new Refusal(`no ${target} session registered (dori role ${target} <ref>)`);
+    return ref;
   }
   const lane = d.store.lane(target);
-  if (lane && lane.status !== "done") return lane.paneId;
-  throw new Refusal(`unknown target ${target}: not a pane id, role or open lane`);
+  if (lane && lane.status !== "done") return lane.sessionRef;
+  const bare = parseRef(target);
+  if (bare) return bare;
+  throw new Refusal(`unknown target ${target}: not a session ref, role or open lane`);
 }
 
 export type SendResult = "DELIVERED" | "QUEUED" | "HELD";
@@ -76,9 +109,9 @@ export async function sendOrThrow(
   text: string,
   from: string,
 ): Promise<"DELIVERED" | "QUEUED"> {
-  const paneId = resolveTarget(d, target);
-  d.store.enqueue(paneId, { at: d.now(), from, text });
-  return (await flushInbox(d, paneId)) === "delivered" ? "DELIVERED" : "QUEUED";
+  const ref = resolveTarget(d, target);
+  d.store.enqueue(ref, { at: d.now(), from, text });
+  return (await flushInbox(d, ref)) === "delivered" ? "DELIVERED" : "QUEUED";
 }
 
 /**
@@ -104,4 +137,6 @@ export async function tellLead(d: Deps, text: string, from: string): Promise<"DE
   return sendOrThrow(d, "lead", text, from);
 }
 
+/** The roles `dori role` registers by hand; `dori up` also registers the two loop sessions. */
 export const ROLES: readonly Role[] = ["lead", "duty"];
+const ROLES_ALL: readonly Role[] = RESERVED_KEYS;

