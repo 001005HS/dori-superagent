@@ -202,4 +202,27 @@ describe("hooks never block a command", () => {
     }
     expect(lines.filter((l) => l.includes("hook onReport failed (timed out after 50 ms)"))).toHaveLength(1);
   });
+
+  test("a hook still running at the deadline is killed before its timed-out line, and its exit adds no second line", async () => {
+    const { w, d, brief } = setup();
+    await startLane(d, "lane-k", brief, { group: "w1" });
+    w.hang = new Promise<void>(() => {});
+    const events: string[] = [];
+    w.onHookKill = () => events.push("kill");
+    config(d, { hooks: { onReport: ["slow-hook", "{key}"] } });
+    const original = process.stderr.write.bind(process.stderr);
+    process.stderr.write = ((chunk: string | Uint8Array) => {
+      events.push(String(chunk));
+      return true;
+    }) as typeof process.stderr.write;
+    try {
+      await report(d, "lane-k", "still going");
+      await hooksSettled(50);
+      // The killed hook settles now; waiting for it again must not print its exit 143.
+      await hooksSettled(1000);
+    } finally {
+      process.stderr.write = original;
+    }
+    expect(events).toEqual(["kill", "dori: hook onReport failed (timed out after 50 ms)\n"]);
+  });
 });

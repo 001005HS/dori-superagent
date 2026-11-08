@@ -45,6 +45,8 @@ export class World {
   processInfoFails = false;
   /** a command named `slow-hook` awaits this before answering (a hook that hangs) */
   hang: Promise<void> | undefined;
+  /** called when a hanging `slow-hook` is killed; the killed hook then exits 143 */
+  onHookKill: (() => void) | undefined;
   /** number of upcoming `pane send-keys` calls that fail (exit 1) */
   keyFails = 0;
   gh: (argv: readonly string[]) => { code: number; stdout: string } = () => ({ code: 1, stdout: "" });
@@ -75,9 +77,22 @@ export class World {
     return p;
   }
 
-  exec: Exec = async (cmd, argv) => {
+  exec: Exec = async (cmd, argv, options) => {
     this.calls.push({ cmd, argv });
-    if (cmd === "slow-hook" && this.hang) await this.hang;
+    if (cmd === "slow-hook" && this.hang) {
+      let killed = false;
+      const kill = new Promise<void>((resolve) =>
+        options?.onSpawn?.({
+          kill: () => {
+            killed = true;
+            this.onHookKill?.();
+            resolve();
+          },
+        }),
+      );
+      await Promise.race([this.hang, kill]);
+      if (killed) return { code: 143, stdout: "", stderr: "terminated" };
+    }
     if (cmd === "gh") return { ...this.gh(argv), stderr: "" };
     if (cmd === "hc") return this.hc.exec(cmd, argv);
     if (cmd !== "herdr") return { stderr: "", ...this.reviewer(argv) };
