@@ -223,3 +223,18 @@ describe("openSession", () => {
     expect(started).toBe(false);
   });
 });
+
+describe("Runtimes with a lazy choice", () => {
+  test("for(ref) never calls the choice; default does", () => {
+    let asked = 0;
+    const make = (kind: RuntimeKind): SessionRuntime => ({ kind }) as unknown as SessionRuntime;
+    const rts = new Runtimes(() => {
+      asked += 1;
+      return "hc";
+    }, make);
+    expect(rts.for({ runtime: "herdr", id: "w1:p3" }).kind).toBe("herdr");
+    expect(asked).toBe(0);
+    expect(rts.default.kind).toBe("hc");
+    expect(asked).toBe(1);
+  });
+});

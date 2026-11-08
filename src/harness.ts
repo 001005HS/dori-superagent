@@ -43,8 +43,10 @@ export const defaultDeps = (): Deps => {
   return {
     store,
     get runtimes() {
-      runtimes ??= new Runtimes(choice().kind, (k) =>
-        k === "hc" ? new HcRuntime(spawnExec) : new HerdrRuntime(spawnExec, process.env["DORI_HERDR_SESSION"]),
+      // The choice is made only when a NEW session is opened: a stored session's own runtime needs none.
+      runtimes ??= new Runtimes(
+        () => choice().kind,
+        (k) => (k === "hc" ? new HcRuntime(spawnExec) : new HerdrRuntime(spawnExec, process.env["DORI_HERDR_SESSION"])),
       );
       return runtimes;
     },
