@@ -10,7 +10,9 @@ export class RuntimeChoiceError extends Error {}
 /** A runtime setting that is present but unusable (bad value, unreadable config file). */
 export class ConfigError extends Error {}
 
-const KINDS: readonly RuntimeKind[] = ["herdr", "hc"];
+// A record keyed by kind, so a new RuntimeKind cannot be left out here; key order (herdr first) is the order checked.
+const KIND_SET: Readonly<Record<RuntimeKind, true>> = { herdr: true, hc: true };
+const KINDS = Object.keys(KIND_SET) as RuntimeKind[];
 const isKind = (value: unknown): value is RuntimeKind => KINDS.some((k) => k === value);
 
 const isExecutableFile = (path: string): boolean => {

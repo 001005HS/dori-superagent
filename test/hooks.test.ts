@@ -62,7 +62,7 @@ describe("hook config and placeholders", () => {
 describe("lifecycle hooks", () => {
   test("onReport runs after the record is saved, with the exact argv", async () => {
     const { w, d, brief } = setup();
-    await startLane(d, "lane-k", brief, { workspace: "w1" });
+    await startLane(d, "lane-k", brief, { group: "w1" });
     config(d, { hooks: { onReport: ["my-hook", "report", "{key}", "{text}"] } });
     await report(d, "lane-k", "half way $(there)", "waiting");
     await hooksSettled();
@@ -72,7 +72,7 @@ describe("lifecycle hooks", () => {
 
   test("onReady runs after the lead delivery, with the exact argv", async () => {
     const { w, d, lead, brief } = setup();
-    await startLane(d, "lane-k", brief, { workspace: "w1" });
+    await startLane(d, "lane-k", brief, { group: "w1" });
     config(d, { hooks: { onReady: ["my-hook", "ready", "{key}", "{text}", "{evidence}"] } });
     await ready(d, "lane-k", "final answer", ["https://x/pull/1", "receipt.txt"]);
     await hooksSettled();
@@ -87,7 +87,7 @@ describe("lifecycle hooks", () => {
 
   test("onLost runs when the duty loop records a lost lane", async () => {
     const { w, d, brief } = setup();
-    const lane = await startLane(d, "gone-lane", brief, { workspace: "w1" });
+    const lane = await startLane(d, "gone-lane", brief, { group: "w1" });
     config(d, { hooks: { onLost: ["my-hook", "lost", "{key}", "{text}"] } });
     w.panes.delete(lane.paneId);
     expect(await dutyTick(d)).toContainEqual({ lane: "gone-lane", action: "lost" });
@@ -98,7 +98,7 @@ describe("lifecycle hooks", () => {
 
   test("a hook exiting 1 leaves `dori ready` exit 0 and prints one stderr line", async () => {
     const { w, d, brief } = setup();
-    await startLane(d, "lane-k", brief, { workspace: "w1" });
+    await startLane(d, "lane-k", brief, { group: "w1" });
     config(d, { hooks: { onReady: ["my-hook", "{key}"] } });
     w.reviewer = () => ({ code: 1, stdout: "", stderr: "boom: webhook refused\nsecond line" });
     const err = captureStderr();

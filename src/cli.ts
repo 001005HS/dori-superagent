@@ -7,12 +7,15 @@ import { mergeGate, review } from "./gate.ts";
 import { defaultDeps, Refusal, send, ROLES, type Deps, type SendResult } from "./harness.ts";
 import { ConfigError, hooksSettled } from "./hooks.ts";
 import { inboxList, releaseHeld, sendToShell } from "./inbox.ts";
+import { refText } from "./refs.ts";
+import { ConfigError as RuntimeConfigError, RuntimeChoiceError } from "./runtime/select.ts";
+import { parseRef } from "./runtime/types.ts";
 import type { Role } from "./store-types.ts";
 
-export const USAGE = `dori - a proactive multi-session harness on herdr + omo
+export const USAGE = `dori - a proactive multi-session harness on herdr or hc + omo
 
-  dori up [--cwd DIR]                         open lead, duty, duty loop and hourly loop panes
-  dori role <lead|duty> [PANE]                register a pane as lead or duty (default: this pane)
+  dori up [--cwd DIR]                         open lead, duty, duty loop and hourly loop sessions
+  dori role <lead|duty> [REF]                 register a session (w1:p3, herdr:w1:p3, hc:t7) as lead or duty (default: this one)
   dori start <key> --brief FILE [--cwd DIR]   open a lane: new tab, omo session, brief + lane rules
   dori report <key> --text T [--status working|waiting]
   dori ready <key> --text T --evidence LINK [--evidence LINK ...]
@@ -113,9 +116,13 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
     case "role": {
       const role = need(x, "role") as Role;
       if (!ROLES.includes(role)) throw new Refusal(`role must be one of ${ROLES.join(", ")}`);
-      const pane = need(a.pos[2] ?? process.env["HERDR_PANE_ID"], "pane id (not inside herdr?)");
-      d.store.setRole(role, pane);
-      console.log(`ROLE ${role}=${pane}`);
+      const given = a.pos[2];
+      const ref = given === undefined ? d.runtimes.selfAny(process.env) : parseRef(given);
+      if (given !== undefined && ref === undefined)
+        throw new Refusal(`${given} is not a session ref (w1:p3, herdr:w1:p3 or hc:t7)`);
+      if (ref === undefined) throw new Refusal(`missing session ref (not inside herdr or hc?)\n\n${USAGE}`);
+      d.store.setRole(role, ref);
+      console.log(`ROLE ${role}=${refText(ref)}`);
       return 0;
     }
     case "start": {
@@ -123,9 +130,9 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
       const workspace = one(a, "workspace");
       const lane = await startLane(d, need(x, "lane key"), need(one(a, "brief"), "--brief"), {
         ...(cwd !== undefined ? { cwd } : {}),
-        ...(workspace !== undefined ? { workspace } : {}),
+        ...(workspace !== undefined ? { group: workspace } : {}),
       });
-      console.log(`STARTED ${lane.key} pane=${lane.paneId} brief=${lane.brief}`);
+      console.log(`STARTED ${lane.key} pane=${refText(lane.sessionRef)} brief=${lane.brief}`);
       return 0;
     }
     case "report": {
@@ -199,7 +206,15 @@ if (import.meta.main) {
   try {
     code = await main(process.argv.slice(2), deps);
   } catch (e) {
-    if (!(e instanceof Refusal || e instanceof ConfigError)) throw e;
+    if (
+      !(
+        e instanceof Refusal ||
+        e instanceof ConfigError ||
+        e instanceof RuntimeConfigError ||
+        e instanceof RuntimeChoiceError
+      )
+    )
+      throw e;
     console.error(e.message);
     code = 2;
   } finally {
