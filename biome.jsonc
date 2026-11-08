@@ -7,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!**/fixtures", "!**/*.md"]
+    "includes": ["**", "!**/fixtures", "!**/*.md", "!docs/**/*.svg"]
   },
   "formatter": {
     "enabled": true,
@@ -20,7 +20,8 @@
     "rules": {
       "preset": "recommended",
       "suspicious": {
-        "noExplicitAny": "error"
+        "noExplicitAny": "error",
+        "noFallthroughSwitchClause": "off" // tsc noFallthroughCasesInSwitch covers this with type knowledge (process.exit returns never)
       },
       "correctness": {
         "noUnusedVariables": "error",
@@ -28,10 +29,11 @@
       },
       "style": {
         "useImportType": "error",
-        "noNonNullAssertion": "off"
+        "noNonNullAssertion": "off" // `!` follows noUncheckedIndexedAccess guards the code has already checked
       },
       "complexity": {
-        "noForEach": "off"
+        "noForEach": "off", // the code base uses forEach for side-effect loops in a few places; for-of rewrites add churn and no safety
+        "useLiteralKeys": "off" // conflicts with tsc noPropertyAccessFromIndexSignature, which requires obj["key"] for index signatures
       }
     }
   },
