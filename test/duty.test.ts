@@ -4,11 +4,12 @@ import { dutyTick } from "../src/duty.ts";
 import { send } from "../src/harness.ts";
 import { report, startLane } from "../src/lanes.ts";
 import { setup } from "./harness-setup.ts";
+import { href } from "./fake.ts";
 
 describe("duty loop", () => {
   test("nudges an idle lane at 10 and 20 minutes, escalates at 40, and ignores WAITING lanes", async () => {
     const { w, d, lead, brief } = setup();
-    const lane = await startLane(d, "quiet", brief, { workspace: "w1" });
+    const lane = await startLane(d, "quiet", brief, { group: "w1" });
     const pane = w.panes.get(lane.paneId)!;
     pane.status = "idle";
     const at = async (min: number) => {
@@ -24,7 +25,7 @@ describe("duty loop", () => {
     expect(lead.received.at(-1)).toContain("[ESCALATE quiet]");
     expect(await at(90)).toEqual([]);
 
-    const waiting = await startLane(d, "blocked-on-ci", brief, { workspace: "w1" });
+    const waiting = await startLane(d, "blocked-on-ci", brief, { group: "w1" });
     w.panes.get(waiting.paneId)!.status = "idle";
     await report(d, "blocked-on-ci", "WAITING: CI", "waiting");
     w.clock += 60 * 60_000;
@@ -35,8 +36,8 @@ describe("duty loop", () => {
     const { w, d, lead } = setup();
     const broken = w.addPane("w1:p9", "idle");
     w.promptFails.set("w1:p9", "herdr exploded");
-    d.store.enqueue("w1:p9", { at: w.clock, from: "cli", text: "to broken" });
-    d.store.enqueue("w1:p1", { at: w.clock, from: "cli", text: "to lead" });
+    d.store.enqueue(href("w1:p9"), { at: w.clock, from: "cli", text: "to broken" });
+    d.store.enqueue(href("w1:p1"), { at: w.clock, from: "cli", text: "to lead" });
     const events = await dutyTick(d);
     expect(events).toContainEqual({
       pane: "w1:p9",
@@ -53,9 +54,9 @@ describe("duty loop", () => {
 
   test("a failing lane-phase delivery is recorded as lane-failed and does not stop the other lanes", async () => {
     const { w, d, brief } = setup();
-    const lost = await startLane(d, "lost-lane", brief, { workspace: "w1" });
-    const stuck = await startLane(d, "stuck-lane", brief, { workspace: "w1" });
-    const fine = await startLane(d, "fine-lane", brief, { workspace: "w1" });
+    const lost = await startLane(d, "lost-lane", brief, { group: "w1" });
+    const stuck = await startLane(d, "stuck-lane", brief, { group: "w1" });
+    const fine = await startLane(d, "fine-lane", brief, { group: "w1" });
     w.panes.delete(lost.paneId);
     w.panes.get(stuck.paneId)!.status = "idle";
     w.panes.get(fine.paneId)!.status = "idle";
@@ -79,7 +80,7 @@ describe("duty loop", () => {
 
   test("a LOST notice whose Enter failed once still reaches the lead on the next tick, exactly once", async () => {
     const { w, d, lead, brief } = setup();
-    const gone = await startLane(d, "gone-lane", brief, { workspace: "w1" });
+    const gone = await startLane(d, "gone-lane", brief, { group: "w1" });
     lead.received.length = 0;
     w.panes.delete(gone.paneId);
     w.promptFails.set("w1:p1", '{"error":{"code":"agent_not_ready"}}');
@@ -101,7 +102,7 @@ describe("duty loop", () => {
     const { w, d } = setup();
     w.addPane("w1:p9", "idle");
     w.promptFails.set("w1:p9", "herdr exploded\nsecond line");
-    d.store.enqueue("w1:p9", { at: w.clock, from: "cli", text: "SECRET queued message" });
+    d.store.enqueue(href("w1:p9"), { at: w.clock, from: "cli", text: "SECRET queued message" });
     const events = await dutyTick(d);
     expect(events).toEqual([{ pane: "w1:p9", action: "delivery-ambiguous", detail: "herdr exploded" }]);
   });
@@ -110,7 +111,7 @@ describe("duty loop", () => {
     const { w, d } = setup();
     w.addPane("w1:p9", "idle");
     w.promptFails.set("w1:p9", "herdr exploded");
-    d.store.enqueue("w1:p9", { at: w.clock, from: "cli", text: "to broken" });
+    d.store.enqueue(href("w1:p9"), { at: w.clock, from: "cli", text: "to broken" });
     const lines: string[] = [];
     const log = console.log;
     console.log = (...a: unknown[]) => void lines.push(a.join(" "));
@@ -126,7 +127,7 @@ describe("duty loop", () => {
 
   test("kill switch: a stopped duty loop flushes, nudges and escalates nothing; resume delivers what was held", async () => {
     const { w, d, lead, brief } = setup();
-    const lane = await startLane(d, "quiet", brief, { workspace: "w1" });
+    const lane = await startLane(d, "quiet", brief, { group: "w1" });
     w.panes.get(lane.paneId)!.status = "idle";
     lead.status = "working";
     expect(await send(d, "lead", "held note", "cli")).toBe("QUEUED");
@@ -170,7 +171,7 @@ describe("duty loop", () => {
 
   test("a working lane counts as activity; a vanished pane is reported LOST", async () => {
     const { w, d, lead, brief } = setup();
-    const lane = await startLane(d, "busy", brief, { workspace: "w1" });
+    const lane = await startLane(d, "busy", brief, { group: "w1" });
     w.panes.get(lane.paneId)!.status = "working";
     w.clock += 30 * 60_000;
     expect(await dutyTick(d)).toEqual([]);

@@ -18,7 +18,6 @@
   "skills/dori-mode/scripts/test/telegram-inbound.test.ts": 325,
   "skills/dori-mode/scripts/test/verify-pr.test.ts": 495,
   "skills/dori-mode/scripts/test/worklog.test.ts": 319,
-  "src/herdr.ts": 332,
   "src/telemetry.ts": 273,
   "test/telemetry.test.ts": 269
 }
