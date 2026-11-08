@@ -5,6 +5,10 @@
 [English](README.md) | [한국어](README.ko.md) | [简体中文](README.zh.md) | 日本語 | [Deutsch](README.de.md) | [Italiano](README.it.md)
 
 <p align="center">
+  <img src="assets/og.png" alt="所有のマシンがひとつのメッシュになり、何も保存しない暗号化リレーを通ります。" width="880">
+</p>
+
+<p align="center">
   <img src="skills/dori-mode/assets/dori-avatar.png" alt="Dori" width="120">
 </p>
 

@@ -5,6 +5,10 @@
 English | [한국어](README.ko.md) | [简体中文](README.zh.md) | [日本語](README.ja.md) | [Deutsch](README.de.md) | [Italiano](README.it.md)
 
 <p align="center">
+  <img src="assets/og.png" alt="One mesh across every machine you own, joined through an encrypted relay that stores none of it." width="880">
+</p>
+
+<p align="center">
   <img src="skills/dori-mode/assets/dori-avatar.png" alt="Dori" width="120">
 </p>
 

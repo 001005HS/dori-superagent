@@ -5,6 +5,10 @@
 [English](README.md) | [한국어](README.ko.md) | [简体中文](README.zh.md) | [日本語](README.ja.md) | [Deutsch](README.de.md) | Italiano
 
 <p align="center">
+  <img src="assets/og.png" alt="Una mesh su tutte le tue macchine, unite da un relay cifrato che non conserva nulla." width="880">
+</p>
+
+<p align="center">
   <img src="skills/dori-mode/assets/dori-avatar.png" alt="Dori" width="120">
 </p>
 

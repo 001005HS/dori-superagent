@@ -5,6 +5,10 @@
 [English](README.md) | [한국어](README.ko.md) | 简体中文 | [日本語](README.ja.md) | [Deutsch](README.de.md) | [Italiano](README.it.md)
 
 <p align="center">
+  <img src="assets/og.png" alt="你拥有的每台机器组成一个网格，经过一个不存储任何内容的加密中继。" width="880">
+</p>
+
+<p align="center">
   <img src="skills/dori-mode/assets/dori-avatar.png" alt="Dori" width="120">
 </p>
 

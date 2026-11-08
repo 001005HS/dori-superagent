@@ -5,6 +5,10 @@
 [English](README.md) | 한국어 | [简体中文](README.zh.md) | [日本語](README.ja.md) | [Deutsch](README.de.md) | [Italiano](README.it.md)
 
 <p align="center">
+  <img src="assets/og.png" alt="내 모든 기기가 하나의 메시로 이어지고, 아무것도 저장하지 않는 암호화 릴레이를 지납니다." width="880">
+</p>
+
+<p align="center">
   <img src="skills/dori-mode/assets/dori-avatar.png" alt="Dori" width="120">
 </p>
 
