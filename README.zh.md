@@ -144,7 +144,7 @@ loop 只开 lane 和发消息；它从不 merge、push 或关闭 pane。完整�
 
 ### 两种会话运行时
 
-会话运行在 herdr 或 hc（[herdr-core](https://releases.herdr.dev/core/install.sh)）上，一个 home 里可以同时有两种运行时的会话。harness 通过 `src/runtime/` 里的一个接口和它们打交道，每条存下来的 lane 和角色都记得是哪个运行时打开了它，所以无论当前选的是哪个运行时，针对它的命令都会送到正确的地方。新会话在 `DORI_RUNTIME` 指定的运行时上打开，否则看 `$DORI_HOME/config.json` 里的 `"runtime": "herdr"` 或 `"runtime": "hc"`；两者都没设置时，Dori 在 hc 终端里选 hc，在 herdr pane 里选 herdr，否则选 PATH 上仅有的那一个。两个都在或都不在时会拒绝，并给出一行修复方法。`dori status` 会先打印这个选择，形如 `RUNTIME hc (from config)`。
+会话运行在 herdr 或 hc（[herdr-core](https://releases.herdr.dev/core/install.sh)）上，一个 home 里可以同时有两种运行时的会话。harness 通过 `src/runtime/` 里的一个接口和它们打交道，每条存下来的 lane 和角色都记得是哪个运行时打开了它，所以无论当前选的是哪个运行时，针对它的命令都会送到正确的地方。新会话在 `DORI_RUNTIME` 指定的运行时上打开，否则看 `$DORI_HOME/config.json` 里的 `"runtime": "herdr"` 或 `"runtime": "hc"`；两者都没设置时，Dori 在 hc 终端里选 hc，在 herdr pane 里选 herdr，否则在装了 hc 时选 hc，没有就选 herdr。hc 是默认运行时；只有两个都不在 PATH 上时才会拒绝，并给出一行修复方法。`dori status` 会先打印这个选择，形如 `RUNTIME hc (from config)`。
 
 hc 上没有工作区和标签页：Dori 为每个会话打开一个带标签的终端，会话状态只来自 agent 自己的报告（一个 OSC 7501 序列，最近的 omo 版本会发送）；从不报告的 agent 保持 `unknown`，发给它的消息在 inbox 里等待。`dori migrate --to hc --all`（或 `--lane <key>`、`--role duty-loop`，加 `--dry-run` 只看计划）把会话搬到另一个运行时：它抓取一份交接 brief，打开替代会话，搬走 inbox，关闭旧会话，每个会话打印 `MIGRATED`、`SKIP`、`DEFERRED` 或 `MIGRATE_ROLLBACK`。逐个动词的对应关系见 [`docs/runtime.md`](docs/runtime.md)。
 
@@ -251,7 +251,7 @@ harness 环境变量：
 | `DORI_HOME` | `~/.dori` | 状态目录 |
 | `DORI_AGENT_CMD` | `omo` | 每个 pane 运行的 agent |
 | `DORI_HERDR_SESSION` | | 一个命名的 herdr 会话 |
-| `DORI_RUNTIME` | 你当前所在的运行时，否则是 PATH 上存在的那一个，`herdr` 或 `hc` | 新会话在哪个运行时上打开：`herdr`，或 `hc`（herdr-core，同一项目的无界面会话运行时）；`$DORI_HOME/config.json` 里的 `runtime` 键作用相同；两个都在或都不在 PATH 上、没有设置、周围也没有任一运行时的 pane 或终端时，`dori` 拒绝猜测 |
+| `DORI_RUNTIME` | 你当前所在的运行时，否则是 PATH 上的 `hc`，没有就是 `herdr` | 新会话在哪个运行时上打开：`herdr`，或 `hc`（herdr-core，同一项目的无界面会话运行时）；`$DORI_HOME/config.json` 里的 `runtime` 键作用相同；两个都不在 PATH 上、没有设置、周围也没有任一运行时的 pane 或终端时，`dori` 会拒绝并给出一行修复方法 |
 | `DORI_CMD` | `src/cli.ts` 的完整路径 | 告诉 agent 如何调用 dori |
 | `DORI_PROMPTS_DIR` | 仓库的 `prompts/` | 你自己的提示词文件 |
 | `DORI_MAX_LANES`, `DORI_MAX_STARTS`, `DORI_MAX_LOAD` | 3、2、核心数 | hourly loop 的预算 |

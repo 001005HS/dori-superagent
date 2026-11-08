@@ -22,7 +22,7 @@ mkdir -p ~/.config/herdr-core && echo 'notes = false' >> ~/.config/herdr-core/co
 hc --skill                          # load its skill unless it is already in your context
 ```
 
-`notes = false` stops hc from typing notes into a parent agent on its own, so the Dori's own sends are the only text that reaches a lane. With both installed, set `"runtime"` in step 4; with only one on PATH, the Dori uses that one.
+`notes = false` stops hc from typing notes into a parent agent on its own, so the Dori's own sends are the only text that reaches a lane. With both installed, the Dori runs on hc unless `"runtime": "herdr"` is set in step 4; with only one on PATH, it uses that one.
 
 ## 2. Messenger
 

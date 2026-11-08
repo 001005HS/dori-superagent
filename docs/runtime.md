@@ -33,12 +33,12 @@ New sessions open on one runtime, picked in this order (`readRuntimeChoice` in `
 2. `"runtime": "herdr"` or `"runtime": "hc"` in `$DORI_HOME/config.json` (default `~/.dori/config.json`). This is the same file the dori-mode skill reads, so one line sets both.
 3. `HC_TERMINAL_ID` is set: Dori runs inside an hc terminal, so hc.
 4. `HERDR_PANE_ID` is set: Dori runs inside a herdr pane, so herdr.
-5. Exactly one of the `herdr` and `hc` binaries is on PATH.
+5. The binaries on PATH: hc (herdr-core) when it is installed, else herdr. hc is the default runtime; with both installed, herdr is one config line away.
 
-When both binaries are on PATH, or neither is, and nothing above decides, Dori refuses to guess and prints the fix in one line:
+When neither binary is on PATH and nothing above decides, Dori refuses and prints the fix in one line:
 
 ```
-both herdr and hc are on PATH: set "runtime": "herdr" or "hc" in <DORI_HOME>/config.json, or DORI_RUNTIME
+neither herdr nor hc is on PATH: install hc (herdr-core) or herdr, or set "runtime": "herdr" or "hc" in <DORI_HOME>/config.json, or DORI_RUNTIME
 ```
 
 (The real message prints the absolute path of your config file.)

@@ -70,7 +70,7 @@ export class ChosenRuntimes extends Runtimes {
   }
 }
 
-/** `DORI_RUNTIME` > the config's `runtime` > the root's detection (inside hc, inside herdr, the one binary on PATH). */
+/** `DORI_RUNTIME` > the config's `runtime` > the root's detection (inside hc, inside herdr, hc on PATH, else herdr). */
 export const runtimeChoice = (config: Pick<DoriConfig, "runtime">, env: Env): RuntimeChoice => {
   const fromEnv = env["DORI_RUNTIME"];
   if (!fromEnv && config.runtime !== undefined) return { kind: config.runtime, source: "config" };
