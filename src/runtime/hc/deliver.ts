@@ -48,8 +48,7 @@ export async function deliver(
   // `done` is the program's own "turn finished, waiting": typing is what it waits for, and `--if` takes only idle|working.
   // Idle read off the screen while hc's own word is still `working` (#178): gate on that word, so hc refuses (and the
   // message stays queued) if omo moves to blocked or idle in between. omo reports `working` for a turn too, so a turn
-  // that starts in the one round trip between the screen read and this send still passes; herdr's #62 path has the
-  // same window.
+  // that starts in the one round trip between the screen read and this send still passes.
   const screenIdle = when === "idle" && before.status === "idle" && probed.word === "working";
   const gate =
     when === "any" || (when === "idle" && before.status === "done") ? [] : ["--if", screenIdle ? "working" : when];
