@@ -46,8 +46,10 @@ export async function deliver(
   // nothing typed into it whatever `when` says: its state is unknown, so the message stays queued.
   if (before.status === "unknown") return { kind: "not-ready", status: "unknown" };
   // `done` is the program's own "turn finished, waiting": typing is what it waits for, and `--if` takes only idle|working.
-  // Idle read off the screen while hc's own word is still `working` (#178): gate on that word, so the send stays one
-  // atomic compare-and-send; if omo moves to blocked or idle in between, hc refuses and the message stays queued.
+  // Idle read off the screen while hc's own word is still `working` (#178): gate on that word, so hc refuses (and the
+  // message stays queued) if omo moves to blocked or idle in between. omo reports `working` for a turn too, so a turn
+  // that starts in the one round trip between the screen read and this send still passes; herdr's #62 path has the
+  // same window.
   const screenIdle = when === "idle" && before.status === "idle" && probed.word === "working";
   const gate =
     when === "any" || (when === "idle" && before.status === "done") ? [] : ["--if", screenIdle ? "working" : when];
