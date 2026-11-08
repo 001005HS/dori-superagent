@@ -209,3 +209,21 @@ test("a failed pane list stays unknown instead of declaring every lane vanished"
   expect(result.lines).toContain("PANES unavailable (session list failed)");
   expect(result.lines.some((line) => line.startsWith("VANISHED"))).toBe(false);
 });
+
+test("boot prints the runtime and where its choice came from as its first line", async () => {
+  const world = newWorld();
+  const deps = { ...bootDeps(world), env: { DORI_RUNTIME: "herdr" } };
+  const result = await bootCheck(deps);
+  expect(result.lines[0]).toBe("RUNTIME herdr (from env)");
+  expect(result.exitCode).toBe(0);
+});
+
+test("a runtime choice that fails is printed first as RUNTIME unavailable and fails boot", async () => {
+  const world = newWorld();
+  const deps = { ...bootDeps(world), env: { DORI_RUNTIME: "tmux" } };
+  const result = await bootCheck(deps);
+  expect(result.lines[0]).toStartWith("RUNTIME unavailable: ");
+  expect(result.lines[0]).toContain("tmux");
+  expect(result.exitCode).toBe(1);
+  expect(result.lines.at(-1)).toBe("BOOT incomplete read-only; nothing restarted, written or stopped");
+});
