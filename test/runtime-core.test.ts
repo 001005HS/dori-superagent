@@ -92,7 +92,9 @@ describe("Runtimes registry", () => {
     return {
       kind,
       self: () => undefined,
-      open: never,
+      createGroup: never,
+      create: never,
+      start: never,
       list: never,
       probe: never,
       read: never,
