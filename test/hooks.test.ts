@@ -178,7 +178,7 @@ describe("reviewCommand and DORI_PROMPTS_DIR", () => {
 describe("hooks never block a command", () => {
   test("hooksSettled returns at its deadline while a hook still runs, printing one timed-out line", async () => {
     const { w, d, brief } = setup();
-    await startLane(d, "lane-k", brief, { workspace: "w1" });
+    await startLane(d, "lane-k", brief, { group: "w1" });
     let release: (() => void) | undefined;
     const hang = new Promise<void>((resolve) => {
       release = resolve;
