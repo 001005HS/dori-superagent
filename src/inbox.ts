@@ -1,9 +1,12 @@
-import { DeliveryUncertain, omoScreenIdle, type AgentStatus } from "./herdr.ts";
+import { DeliveryUncertain } from "./delivery.ts";
 import { failureDetail } from "./duty.ts";
 import { Refusal, resolveTarget, send, tellLead, type Deps, type SendResult } from "./harness.ts";
+import { refText } from "./refs.ts";
+import type { AgentStatus, SessionRef } from "./runtime/types.ts";
 import type { DeliveryAttempt, QueuedMessage } from "./store-types.ts";
 
-// A pane with no running agent (`shell`) is never ready: text typed into a bare shell runs as a command (#66).
+// A session with no running agent (`shell`) is never ready: text typed into a bare shell runs as a command (#66).
+// `error` waits like `blocked`: the agent needs a person before it reads anything.
 const READY_TO_READ: readonly AgentStatus[] = ["idle", "done"];
 
 /**
@@ -12,85 +15,111 @@ const READY_TO_READ: readonly AgentStatus[] = ["idle", "done"];
  * is in the pane, or appears before typing, the message takes the queued agent path instead.
  */
 export async function sendToShell(d: Deps, target: string, text: string, from: string): Promise<SendResult> {
-  const paneId = resolveTarget(d, target);
-  if ((await d.herdr.status(paneId)) !== "shell") return send(d, target, text, from);
-  if (await d.herdr.typeIntoShell(paneId, text)) return "DELIVERED";
-  d.store.enqueue(paneId, { at: d.now(), from, text });
+  const ref = resolveTarget(d, target);
+  const rt = d.runtimes.for(ref);
+  if ((await rt.probe(ref)).status !== "shell") return send(d, target, text, from);
+  if (await rt.typeIntoShell(ref, text)) return "DELIVERED";
+  d.store.enqueue(ref, { at: d.now(), from, text });
   return "QUEUED";
 }
 
 /**
- * Delivers a pane's queued messages as one batch. `held`: only messages held after an ambiguous delivery are left;
- * they wait for a person or the lead (#89). `queued` also when another flush of this pane holds its inbox lock: one
- * flush per pane at a time, across processes (#108). Throws DeliveryUncertain, having recorded the attempt on the
- * queued messages, when the batch may already have reached the pane, and Refusal when the pane is gone.
+ * Delivers a session's queued messages as one batch. `held`: only messages held after an ambiguous delivery are left;
+ * they wait for a person or the lead (#89). `queued` also when another flush of this session holds its inbox lock: one
+ * flush per session at a time, across processes (#108). Throws DeliveryUncertain, having recorded the attempt on the
+ * queued messages, when the batch may already have reached the session, and Refusal when the session is gone. A
+ * session whose inbox was forwarded (a migration) is flushed at its new ref, old entries merged in first.
  */
-export async function flushInbox(d: Deps, paneId: string): Promise<"delivered" | "queued" | "no-agent" | "held"> {
-  if (d.store.queued(paneId).length === 0) return "delivered";
-  const release = d.store.lockInbox(paneId, d.now());
+export async function flushInbox(d: Deps, from: SessionRef): Promise<"delivered" | "queued" | "no-agent" | "held"> {
+  const ref = d.store.forwardOf(from) ?? from;
+  if (d.store.queued(ref).length === 0 && !d.store.forwardPending(ref)) return "delivered";
+  const release = d.store.lockInbox(ref, d.now());
   if (!release) return "queued";
   try {
-    return await flushLocked(d, paneId);
+    d.store.mergeForwarded(ref);
+    return await flushLocked(d, ref);
   } finally {
     release();
   }
 }
 
-async function flushLocked(d: Deps, paneId: string): Promise<"delivered" | "queued" | "no-agent" | "held"> {
+async function flushLocked(d: Deps, ref: SessionRef): Promise<"delivered" | "queued" | "no-agent" | "held"> {
   // Re-read under the lock: the flush that held it may have delivered these meanwhile.
-  const all = d.store.queued(paneId);
+  const all = d.store.queued(ref);
   if (all.length === 0) return "delivered";
   const queued = all.filter((m) => m.attempt?.state !== "ambiguous");
-  let status = await d.herdr.status(paneId);
-  // Before the held check, so a gone pane with only held messages says so instead of delivery-ambiguous forever (#108).
-  if (status === "gone") throw new Refusal(`pane ${paneId} is gone; ${all.length} message(s) kept in its inbox`);
+  const rt = d.runtimes.for(ref);
+  // The probe carries the #62 screen check on herdr: an omo with live monitors between turns reads idle.
+  const { status } = await rt.probe(ref);
+  // Before the held check, so a gone session with only held messages says so instead of delivery-ambiguous forever (#108).
+  if (status === "gone") throw new Refusal(`pane ${refText(ref)} is gone; ${all.length} message(s) kept in its inbox`);
   if (queued.length === 0) return "held";
-  if (status === "working" && (await screenShowsIdle(d, paneId))) status = "idle";
   const typed = queued.filter((m) => m.attempt?.state === "typed");
   if (status === "shell") {
-    // The agent the text was typed into is gone from the pane: an Enter later would go to another agent's empty input.
-    if (typed.length > 0) await holdTyped(d, paneId, typed, "the agent left the pane before its Enter");
+    // The agent the text was typed into is gone from the session: an Enter later would go to another agent's empty input.
+    if (typed.length > 0) await holdTyped(d, ref, typed, "the agent left the pane before its Enter");
     return "no-agent";
   }
   if (!READY_TO_READ.includes(status)) return "queued";
-  if (typed.length > 0) {
+  const first = typed[0];
+  if (first !== undefined) {
     // An earlier pass typed these and only the Enter failed: press Enter, never type them again (#89), and only into
     // the agent they were typed into (#108).
-    const submitted = await d.herdr.submitTyped(paneId, typed[0]!.attempt);
+    const into = {
+      ...(first.attempt?.agent !== undefined ? { agent: first.attempt.agent } : {}),
+      ...(first.attempt?.pgid !== undefined ? { pgid: first.attempt.pgid } : {}),
+    };
+    let submitted: Awaited<ReturnType<typeof rt.submitTyped>>;
+    try {
+      submitted = await rt.submitTyped(ref, into);
+    } catch (e) {
+      throw new DeliveryUncertain(e, true, into);
+    }
     if (submitted === "wait") return "no-agent";
     if (submitted === "changed") {
-      await holdTyped(d, paneId, typed, "a different agent is in the pane than the one the text was typed into");
+      await holdTyped(d, ref, typed, "a different agent is in the pane than the one the text was typed into");
       return typed.length === queued.length ? "held" : "queued";
     }
-    settleInbox(d, paneId, typed);
+    settleInbox(d, ref, typed);
     // Messages queued after the typed batch were not delivered by this Enter; they wait for the next pass.
     return typed.length === queued.length ? "delivered" : "queued";
   }
   const body =
     queued.length === 1
-      ? queued[0]!.text
+      ? (queued[0]?.text ?? "")
       : `${queued.length} messages arrived while you were busy:\n\n` +
         queued.map((m, i) => `(${i + 1}) from ${m.from}:\n${m.text}`).join("\n\n");
-  try {
-    if (!(await d.herdr.deliver(paneId, body))) return "no-agent";
-  } catch (e) {
-    if (e instanceof DeliveryUncertain) await recordUncertain(d, paneId, queued, e);
-    throw e;
+  const out = await rt.deliver(ref, body);
+  switch (out.kind) {
+    case "delivered":
+      settleInbox(d, ref, queued);
+      return "delivered";
+    case "no-agent":
+      return "no-agent";
+    case "not-ready":
+      return "queued";
+    case "typed":
+    case "ambiguous": {
+      const e =
+        out.kind === "typed"
+          ? new DeliveryUncertain(out.failure, true, out.into)
+          : new DeliveryUncertain(out.failure, false);
+      await recordUncertain(d, ref, queued, e, rt.kind);
+      throw e;
+    }
   }
-  settleInbox(d, paneId, queued);
-  return "delivered";
 }
 
 /** Re-reads the inbox and drops the batch (delivered) or marks it with the failed attempt; messages queued meanwhile stay. */
-function settleInbox(d: Deps, paneId: string, batch: readonly QueuedMessage[], attempt?: DeliveryAttempt): void {
+function settleInbox(d: Deps, ref: SessionRef, batch: readonly QueuedMessage[], attempt?: DeliveryAttempt): void {
   const left = [...batch];
-  const rest = d.store.queued(paneId).flatMap((m) => {
+  const rest = d.store.queued(ref).flatMap((m) => {
     const i = left.findIndex((b) => b.at === m.at && b.from === m.from && b.text === m.text);
     if (i < 0) return [m];
     left.splice(i, 1);
     return attempt ? [{ ...m, attempt }] : [];
   });
-  d.store.saveInbox(paneId, rest);
+  d.store.saveInbox(ref, rest);
 }
 
 const NOTICE_FROM = "dori-delivery";
@@ -102,28 +131,30 @@ const NOTICE_FROM = "dori-delivery";
  */
 async function recordUncertain(
   d: Deps,
-  paneId: string,
+  ref: SessionRef,
   batch: readonly QueuedMessage[],
   e: DeliveryUncertain,
+  runtime: string,
 ): Promise<void> {
   const detail = failureDetail(e);
-  settleInbox(d, paneId, batch, {
+  settleInbox(d, ref, batch, {
     at: d.now(),
     state: e.typed ? "typed" : "ambiguous",
     detail,
     ...(e.typed ? e.agent : {}),
   });
-  if (!e.typed) await noticeHeld(d, paneId, batch, `herdr said: ${detail}`);
+  if (!e.typed) await noticeHeld(d, ref, batch, `${runtime} said: ${detail}`);
 }
 
 /** Typed text whose agent left or changed (#108): it may sit in a lost input, so it is held like an ambiguous batch. */
-async function holdTyped(d: Deps, paneId: string, typed: readonly QueuedMessage[], why: string): Promise<void> {
-  settleInbox(d, paneId, typed, { at: d.now(), state: "ambiguous", detail: why });
-  await noticeHeld(d, paneId, typed, why);
+async function holdTyped(d: Deps, ref: SessionRef, typed: readonly QueuedMessage[], why: string): Promise<void> {
+  settleInbox(d, ref, typed, { at: d.now(), state: "ambiguous", detail: why });
+  await noticeHeld(d, ref, typed, why);
 }
 
-async function noticeHeld(d: Deps, paneId: string, batch: readonly QueuedMessage[], why: string): Promise<void> {
+async function noticeHeld(d: Deps, ref: SessionRef, batch: readonly QueuedMessage[], why: string): Promise<void> {
   if (batch.every((m) => m.from === NOTICE_FROM)) return;
+  const paneId = refText(ref);
   const which = batch.map((m) => `from ${m.from} queued ${new Date(m.at).toISOString()}`).join(", ");
   const text =
     `[DELIVERY-AMBIGUOUS ${paneId}] ${batch.length} message(s) (${which}) may or may not have reached the pane; ${why}. ` +
@@ -149,10 +180,10 @@ export type InboxEntry = {
 
 const PREVIEW_CHARS = 60;
 
-/** A pane's queued messages, 1-based in inbox order. The text is never shown whole: its first 60 characters, JSON-escaped. */
+/** A session's queued messages, 1-based in inbox order. The text is never shown whole: its first 60 characters, JSON-escaped. */
 export function inboxList(d: Deps, target: string): { paneId: string; entries: InboxEntry[] } {
-  const paneId = resolveTarget(d, target);
-  const entries = d.store.queued(paneId).map(
+  const ref = resolveTarget(d, target);
+  const entries = d.store.queued(ref).map(
     (m, i): InboxEntry => ({
       index: i + 1,
       state: m.attempt?.state === "ambiguous" ? "held" : m.attempt?.state === "typed" ? "typed" : "queued",
@@ -161,20 +192,21 @@ export function inboxList(d: Deps, target: string): { paneId: string; entries: I
       preview: JSON.stringify(m.text.slice(0, PREVIEW_CHARS)) + (m.text.length > PREVIEW_CHARS ? "..." : ""),
     }),
   );
-  return { paneId, entries };
+  return { paneId: refText(ref), entries };
 }
 
 /**
  * `ack` drops a held entry (it did arrive); `resend` clears its attempt so the next flush delivers it (it did not).
- * Only held entries: a typed one is in the pane's input already, and a queued one is delivered anyway. Runs under the
- * inbox lock, so a flush in progress cannot overwrite the change.
+ * Only held entries: a typed one is in the session's input already, and a queued one is delivered anyway. Runs under
+ * the inbox lock, so a flush in progress cannot overwrite the change. Returns the session as refText.
  */
 export function releaseHeld(d: Deps, target: string, index: number, how: "ack" | "resend"): string {
-  const paneId = resolveTarget(d, target);
-  const release = d.store.lockInbox(paneId, d.now());
+  const ref = resolveTarget(d, target);
+  const paneId = refText(ref);
+  const release = d.store.lockInbox(ref, d.now());
   if (!release) throw new Refusal(`the inbox of ${paneId} is being flushed right now; try again`);
   try {
-    const msgs = d.store.queued(paneId);
+    const msgs = d.store.queued(ref);
     const m = Number.isInteger(index) ? msgs[index - 1] : undefined;
     if (!m)
       throw new Refusal(
@@ -184,23 +216,11 @@ export function releaseHeld(d: Deps, target: string, index: number, how: "ack" |
       throw new Refusal(`entry ${index} of ${paneId} is not held; only held entries can be acked or resent`);
     const { attempt: _, ...fresh } = m;
     d.store.saveInbox(
-      paneId,
+      ref,
       how === "ack" ? msgs.filter((_, i) => i !== index - 1) : msgs.map((x, i) => (i === index - 1 ? fresh : x)),
     );
     return paneId;
   } finally {
     release();
-  }
-}
-
-/**
- * herdr reports an omo with live monitors as `working` between turns (#62). Believe the screen only when it
- * positively shows the idle input; a failed read is doubt, so the message stays queued for the next duty pass.
- */
-async function screenShowsIdle(d: Deps, paneId: string): Promise<boolean> {
-  try {
-    return omoScreenIdle(await d.herdr.read(paneId, 30));
-  } catch {
-    return false;
   }
 }

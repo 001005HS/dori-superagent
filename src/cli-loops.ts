@@ -3,6 +3,7 @@ import { need, one, textOf, USAGE, type Args } from "./cli.ts";
 import { dutyTick } from "./duty.ts";
 import { Refusal, type Deps } from "./harness.ts";
 import { HOUR, loopTick, msUntilNext, summary } from "./loop.ts";
+import { acquire, release } from "./loop-lock.ts";
 
 export async function runDuty(d: Deps, a: Args, x: string | undefined): Promise<number> {
   if (x === "stop") {
@@ -25,11 +26,19 @@ export async function runDuty(d: Deps, a: Args, x: string | undefined): Promise<
   // Bun.sleep(NaN) and any Bun.sleep under 1 ms return at once, so a bad value would run duty passes back to back.
   if (!(Number.isFinite(interval) && interval >= 1))
     throw new Refusal("--interval must be a number of seconds, 0.001 or more");
-  for (;;) {
-    for (const e of await dutyTick(d))
-      console.log(`DUTY ${[e.lane ?? e.pane, e.action].filter(Boolean).join(" ")}${e.detail ? `: ${e.detail}` : ""}`);
-    if (one(a, "once")) break;
-    await Bun.sleep(interval);
+  // One duty loop per home: two would deliver the same inbox twice and nudge every lane twice.
+  const lock = d.store.lockPath("duty");
+  const held = acquire(d, lock);
+  if ("holder" in held) throw new Refusal(`another duty loop runs in this home (${held.holder})`);
+  try {
+    for (;;) {
+      for (const e of await dutyTick(d))
+        console.log(`DUTY ${[e.lane ?? e.pane, e.action].filter(Boolean).join(" ")}${e.detail ? `: ${e.detail}` : ""}`);
+      if (one(a, "once")) break;
+      await Bun.sleep(interval);
+    }
+  } finally {
+    release(d, held.nonce, lock);
   }
   return 0;
 }

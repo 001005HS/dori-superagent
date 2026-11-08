@@ -10,13 +10,14 @@ const nonEmpty = (value: string | undefined): string | undefined =>
 export class Runtimes {
   private readonly built = new Map<RuntimeKind, SessionRuntime>();
 
+  /** `selected` may be lazy: a stored session's runtime (`for(ref)`) never needs the choice to be made. */
   constructor(
-    private readonly selected: RuntimeKind,
+    private readonly selected: RuntimeKind | (() => RuntimeKind),
     private readonly make: (kind: RuntimeKind) => SessionRuntime,
   ) {}
 
   get default(): SessionRuntime {
-    return this.of(this.selected);
+    return this.of(typeof this.selected === "function" ? this.selected() : this.selected);
   }
 
   for(ref: SessionRef): SessionRuntime {

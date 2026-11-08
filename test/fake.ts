@@ -2,9 +2,17 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Deps } from "../src/harness.ts";
-import { Herdr, type AgentStatus, type Exec } from "../src/herdr.ts";
+import type { Exec } from "../src/runtime/exec.ts";
+import { HcRuntime } from "../src/runtime/hc/index.ts";
+import { HerdrRuntime } from "../src/runtime/herdr/index.ts";
+import { Runtimes } from "../src/runtime/registry.ts";
+import type { AgentStatus, RuntimeKind, SessionRef } from "../src/runtime/types.ts";
 import { Store, type HostLoad } from "../src/store.ts";
 import type { DutyCounts, TelemetryEvent, Usage } from "../src/telemetry.ts";
+import { FakeHc } from "./fake-hc.ts";
+
+/** A herdr pane ref, the form every herdr-world test addresses sessions by. */
+export const href = (id: string): SessionRef => ({ runtime: "herdr", id });
 
 /**
  * `screen` is what `pane read` returns; undefined makes the read fail. `agent` is the agent name `pane get` reports
@@ -22,6 +30,8 @@ type Pane = {
 
 export class World {
   panes = new Map<string, Pane>();
+  /** The hc terminals, for deps({ runtime: "hc" }); its calls are recorded in `calls` too. */
+  hc = new FakeHc();
   calls: { cmd: string; argv: readonly string[] }[] = [];
   clock = 1_000_000;
   host: HostLoad = { load1: 1, cores: 8, memFreePct: 50 };
@@ -53,7 +63,7 @@ export class World {
     },
     flush: async () => {},
   };
-  /** every command other than herdr and gh: the reviewer, and lifecycle hooks */
+  /** every command other than herdr, hc and gh: the reviewer, and lifecycle hooks */
   reviewer: (argv: readonly string[]) => { code: number; stdout: string; stderr?: string } = () => ({
     code: 0,
     stdout: "VERDICT: CLEAR",
@@ -69,6 +79,7 @@ export class World {
     this.calls.push({ cmd, argv });
     if (cmd === "slow-hook" && this.hang) await this.hang;
     if (cmd === "gh") return { ...this.gh(argv), stderr: "" };
+    if (cmd === "hc") return this.hc.exec(cmd, argv);
     if (cmd !== "herdr") return { stderr: "", ...this.reviewer(argv) };
     const ok = (result: unknown) => ({ code: 0, stdout: JSON.stringify({ result }), stderr: "" });
     const [group, verb, id] = argv;
@@ -139,10 +150,16 @@ export class World {
     return { code: 1, stdout: "", stderr: `unhandled ${argv.join(" ")}` };
   };
 
-  deps(): Deps {
+  /** Deps over this world's recorders; `runtime` is the selected one (both are reachable by ref). */
+  deps(opts: { runtime?: RuntimeKind } = {}): Deps {
+    const kind = opts.runtime ?? "herdr";
+    const quiet = { env: {}, sleep: async () => {} };
     return {
       store: new Store(mkdtempSync(join(tmpdir(), "dori-test-"))),
-      herdr: new Herdr(this.exec, ""),
+      runtimes: new Runtimes(kind, (k) =>
+        k === "hc" ? new HcRuntime(this.exec, { ...quiet, log: () => {} }) : new HerdrRuntime(this.exec, "", quiet),
+      ),
+      choice: () => ({ kind, source: "config" }),
       exec: this.exec,
       now: () => this.clock,
       agentCmd: "omo",
