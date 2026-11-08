@@ -63,11 +63,26 @@ export function substitute(argv: ArgvTemplate, vars: HookVars): string[] {
   );
 }
 
-const pending = new Set<Promise<void>>();
+const pending = new Map<Promise<void>, HookName>();
 
-/** Resolves once every hook started so far has finished; the CLI awaits it before exiting. */
-export async function hooksSettled(): Promise<void> {
-  await Promise.all([...pending]);
+/** How long the CLI waits for hooks still running at exit; a slower hook is reported as timed out and left behind. */
+export const HOOK_SETTLE_MS = 2000;
+
+/**
+ * Resolves once every hook started so far has finished, or after `ms`: a hook that hangs never keeps a command from
+ * exiting (one `timed out` line per hook still running). The CLI awaits it before exiting.
+ */
+export async function hooksSettled(ms: number = HOOK_SETTLE_MS): Promise<void> {
+  if (pending.size === 0) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<"timeout">((resolve) => {
+    timer = setTimeout(() => resolve("timeout"), ms);
+  });
+  const outcome = await Promise.race([Promise.all([...pending.keys()]).then(() => "done" as const), deadline]);
+  clearTimeout(timer);
+  if (outcome === "timeout") {
+    for (const name of pending.values()) process.stderr.write(`dori: hook ${name} failed (timed out after ${ms} ms)\n`);
+  }
 }
 
 const firstLine = (s: string): string => s.trim().split("\n")[0] ?? "";
@@ -93,7 +108,7 @@ export function runHook(d: Deps, name: Exclude<HookName, "reviewCommand">, vars:
     }
   };
   const p = run();
-  pending.add(p);
+  pending.set(p, name);
   void p.finally(() => pending.delete(p));
   return p;
 }

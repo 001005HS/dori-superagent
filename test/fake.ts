@@ -33,6 +33,8 @@ export class World {
   private gets = new Map<string, number>();
   /** `pane process-info` fails (exit 1) for every pane */
   processInfoFails = false;
+  /** a command named `slow-hook` awaits this before answering (a hook that hangs) */
+  hang: Promise<void> | undefined;
   /** number of upcoming `pane send-keys` calls that fail (exit 1) */
   keyFails = 0;
   gh: (argv: readonly string[]) => { code: number; stdout: string } = () => ({ code: 1, stdout: "" });
@@ -65,6 +67,7 @@ export class World {
 
   exec: Exec = async (cmd, argv) => {
     this.calls.push({ cmd, argv });
+    if (cmd === "slow-hook" && this.hang) await this.hang;
     if (cmd === "gh") return { ...this.gh(argv), stderr: "" };
     if (cmd !== "herdr") return { stderr: "", ...this.reviewer(argv) };
     const ok = (result: unknown) => ({ code: 0, stdout: JSON.stringify({ result }), stderr: "" });

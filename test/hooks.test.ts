@@ -46,13 +46,14 @@ describe("hook config and placeholders", () => {
   });
 
   test("a non-array or a non-string element is a ConfigError naming the key", async () => {
-    const { d } = setup();
+    const { w, d } = setup();
     config(d, { hooks: { onReady: "not-an-array" } });
     expect(() => loadHooks(d.store.root)).toThrow(ConfigError);
     expect(() => loadHooks(d.store.root)).toThrow("hooks.onReady");
     config(d, { hooks: { reviewCommand: ["rev", 7] } });
     expect(() => loadHooks(d.store.root)).toThrow("hooks.reviewCommand");
     await expect(review(d, "o/r#1")).rejects.toThrow(ConfigError);
+    expect(w.calls.some((c) => c.cmd === "gh")).toBe(false);
     config(d, { hooks: [] });
     expect(() => loadHooks(d.store.root)).toThrow("hooks must be an object");
   });
@@ -171,5 +172,34 @@ describe("reviewCommand and DORI_PROMPTS_DIR", () => {
     expect(readFileSync(join(d.store.root, "prompts", "lead.md"), "utf8")).toBe("custom lead.md via dori");
     expect(readFileSync(join(d.store.root, "prompts", "duty.md"), "utf8")).toBe("custom duty.md via dori");
     expect(w.calls.length).toBeGreaterThan(0);
+  });
+});
+
+describe("hooks never block a command", () => {
+  test("hooksSettled returns at its deadline while a hook still runs, printing one timed-out line", async () => {
+    const { w, d, brief } = setup();
+    await startLane(d, "lane-k", brief, { workspace: "w1" });
+    let release: (() => void) | undefined;
+    const hang = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    w.hang = hang;
+    config(d, { hooks: { onReport: ["slow-hook", "{key}"] } });
+    const lines: string[] = [];
+    const original = process.stderr.write.bind(process.stderr);
+    process.stderr.write = ((chunk: string | Uint8Array) => {
+      lines.push(String(chunk));
+      return true;
+    }) as typeof process.stderr.write;
+    try {
+      await report(d, "lane-k", "still going");
+      const started = Date.now();
+      await hooksSettled(50);
+      expect(Date.now() - started).toBeLessThan(2000);
+    } finally {
+      process.stderr.write = original;
+      release?.();
+    }
+    expect(lines.filter((l) => l.includes("hook onReport failed (timed out after 50 ms)"))).toHaveLength(1);
   });
 });
