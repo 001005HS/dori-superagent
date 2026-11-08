@@ -82,7 +82,7 @@ Start herdr, then:
 
 ```sh
 dori up
-# UP lead=w1:p1 duty=w1:p2 loop=w1:p3 hourly=w1:p4 home=~/.dori
+# UP runtime=herdr lead=w1:p1 duty=w1:p2 loop=w1:p3 hourly=w1:p4 home=~/.dori
 ```
 
 That opens a herdr workspace named `dori` with a lead pane (omo with `prompts/lead.md` appended to its system prompt), a duty pane (omo with `prompts/duty.md`), the duty loop below it, and the hourly loop below that. Talk to the lead pane. It writes a brief (goal, inputs, deliverable, stop condition, constraints; see [`examples/brief.md`](examples/brief.md)) and opens lanes itself. You can do the same from a shell:
@@ -245,7 +245,7 @@ Harness environment:
 | `DORI_HOME` | `~/.dori` | state directory |
 | `DORI_AGENT_CMD` | `omo` | the agent each pane runs |
 | `DORI_HERDR_SESSION` | | a named herdr session |
-| `DORI_RUNTIME` | the one of `herdr` and `hc` on PATH | which runtime new sessions open on, `herdr` or `hc`; the `runtime` key in `$DORI_HOME/config.json` does the same, and with both or neither binary on PATH and nothing set, `dori` refuses to guess |
+| `DORI_RUNTIME` | the runtime you are inside, else the one of `herdr` and `hc` on PATH | which runtime new sessions open on: `herdr`, or `hc` (herdr-core, the headless session runtime from the same project); the `runtime` key in `$DORI_HOME/config.json` does the same, and with both or neither binary on PATH, nothing set and no pane or terminal of either around you, `dori` refuses to guess |
 | `DORI_CMD` | full path to `src/cli.ts` | how the agents are told to call dori |
 | `DORI_PROMPTS_DIR` | the repo's `prompts/` | your own prompt files |
 | `DORI_MAX_LANES`, `DORI_MAX_STARTS`, `DORI_MAX_LOAD` | 3, 2, core count | hourly loop budget |

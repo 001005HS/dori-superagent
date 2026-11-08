@@ -82,7 +82,7 @@ Starte herdr, dann:
 
 ```sh
 dori up
-# UP lead=w1:p1 duty=w1:p2 loop=w1:p3 hourly=w1:p4 home=~/.dori
+# UP runtime=herdr lead=w1:p1 duty=w1:p2 loop=w1:p3 hourly=w1:p4 home=~/.dori
 ```
 
 Das öffnet einen herdr-Workspace namens `dori` mit einem Lead-Pane (omo, mit `prompts/lead.md` an seinen System-Prompt angehängt), einem Duty-Pane (omo mit `prompts/duty.md`), darunter dem Duty-Loop und darunter dem stündlichen Loop. Sprich mit dem Lead-Pane. Es schreibt einen Brief (Ziel, Eingaben, Ergebnis, Abbruchbedingung, Einschränkungen; siehe [`examples/brief.md`](examples/brief.md)) und öffnet selbst Lanes. Dasselbe kannst du aus einer Shell tun:
@@ -245,7 +245,7 @@ Umgebung des Harness:
 | `DORI_HOME` | `~/.dori` | Zustandsverzeichnis |
 | `DORI_AGENT_CMD` | `omo` | der Agent, den jedes Pane ausführt |
 | `DORI_HERDR_SESSION` | | eine benannte herdr-Session |
-| `DORI_RUNTIME` | das eine von `herdr` und `hc` auf dem PATH | auf welcher Laufzeit neue Sessions öffnen, `herdr` oder `hc`; der Schlüssel `runtime` in `$DORI_HOME/config.json` tut dasselbe, und wenn beide oder keines der Programme auf dem PATH liegen und nichts gesetzt ist, rät `dori` nicht |
+| `DORI_RUNTIME` | die Laufzeit, in der du gerade sitzt, sonst das eine von `herdr` und `hc` auf dem PATH | auf welcher Laufzeit neue Sessions öffnen: `herdr`, oder `hc` (herdr-core, die Session-Laufzeit ohne Oberfläche aus demselben Projekt); der Schlüssel `runtime` in `$DORI_HOME/config.json` tut dasselbe, und wenn beide oder keines der Programme auf dem PATH liegen, nichts gesetzt ist und du in keinem Pane oder Terminal von beiden sitzt, rät `dori` nicht |
 | `DORI_CMD` | voller Pfad zu `src/cli.ts` | wie die Agents dori aufrufen sollen |
 | `DORI_PROMPTS_DIR` | `prompts/` des Repos | deine eigenen Prompt-Dateien |
 | `DORI_MAX_LANES`, `DORI_MAX_STARTS`, `DORI_MAX_LOAD` | 3, 2, Anzahl der Kerne | Budget des stündlichen Loops |

@@ -82,7 +82,7 @@ Avvia herdr, poi:
 
 ```sh
 dori up
-# UP lead=w1:p1 duty=w1:p2 loop=w1:p3 hourly=w1:p4 home=~/.dori
+# UP runtime=herdr lead=w1:p1 duty=w1:p2 loop=w1:p3 hourly=w1:p4 home=~/.dori
 ```
 
 Questo apre un workspace di herdr chiamato `dori` con un pane lead (omo con `prompts/lead.md` aggiunto al suo system prompt), un pane duty (omo con `prompts/duty.md`), il duty loop sotto di esso e l'hourly loop ancora più sotto. Parla con il pane lead. Scrive un brief (obiettivo, input, deliverable, condizione di stop, vincoli; vedi [`examples/brief.md`](examples/brief.md)) e apre le lane da solo. Puoi fare lo stesso da una shell:
@@ -245,7 +245,7 @@ Ambiente dell'harness:
 | `DORI_HOME` | `~/.dori` | directory di stato |
 | `DORI_AGENT_CMD` | `omo` | l'agente che gira in ogni pane |
 | `DORI_HERDR_SESSION` | | una sessione herdr con nome |
-| `DORI_RUNTIME` | quello tra `herdr` e `hc` presente nel PATH | su quale runtime si aprono le nuove sessioni, `herdr` o `hc`; la chiave `runtime` in `$DORI_HOME/config.json` fa lo stesso, e con entrambi o nessuno dei due binari nel PATH e niente impostato, `dori` si rifiuta di indovinare |
+| `DORI_RUNTIME` | il runtime in cui ti trovi, altrimenti quello tra `herdr` e `hc` presente nel PATH | su quale runtime si aprono le nuove sessioni: `herdr`, oppure `hc` (herdr-core, il runtime di sessione senza interfaccia dello stesso progetto); la chiave `runtime` in `$DORI_HOME/config.json` fa lo stesso, e con entrambi o nessuno dei due binari nel PATH, niente impostato e nessun pane o terminale dei due intorno a te, `dori` si rifiuta di indovinare |
 | `DORI_CMD` | percorso completo di `src/cli.ts` | come viene detto agli agenti di chiamare dori |
 | `DORI_PROMPTS_DIR` | i `prompts/` del repository | i tuoi file di prompt |
 | `DORI_MAX_LANES`, `DORI_MAX_STARTS`, `DORI_MAX_LOAD` | 3, 2, numero di core | budget dell'hourly loop |

@@ -82,7 +82,7 @@ bun link   # puts `dori` on your PATH
 
 ```sh
 dori up
-# UP lead=w1:p1 duty=w1:p2 loop=w1:p3 hourly=w1:p4 home=~/.dori
+# UP runtime=herdr lead=w1:p1 duty=w1:p2 loop=w1:p3 hourly=w1:p4 home=~/.dori
 ```
 
 这会打开一个名为 `dori` 的 herdr 工作区，里面有一个 lead pane（omo，系统提示词后追加了 `prompts/lead.md`），一个 duty pane（omo，带 `prompts/duty.md`），其下是 duty loop，再下面是 hourly loop。和 lead pane 对话就行。它会写一份 brief（目标、输入、交付物、停止条件、约束；见 [`examples/brief.md`](examples/brief.md)），并自己开 lane。你也可以在 shell 里做同样的事：
@@ -245,7 +245,7 @@ harness 环境变量：
 | `DORI_HOME` | `~/.dori` | 状态目录 |
 | `DORI_AGENT_CMD` | `omo` | 每个 pane 运行的 agent |
 | `DORI_HERDR_SESSION` | | 一个命名的 herdr 会话 |
-| `DORI_RUNTIME` | PATH 上存在的那一个，`herdr` 或 `hc` | 新会话在哪个运行时上打开，`herdr` 或 `hc`；`$DORI_HOME/config.json` 里的 `runtime` 键作用相同；两个都在或都不在 PATH 上且没有设置时，`dori` 拒绝猜测 |
+| `DORI_RUNTIME` | 你当前所在的运行时，否则是 PATH 上存在的那一个，`herdr` 或 `hc` | 新会话在哪个运行时上打开：`herdr`，或 `hc`（herdr-core，同一项目的无界面会话运行时）；`$DORI_HOME/config.json` 里的 `runtime` 键作用相同；两个都在或都不在 PATH 上、没有设置、周围也没有任一运行时的 pane 或终端时，`dori` 拒绝猜测 |
 | `DORI_CMD` | `src/cli.ts` 的完整路径 | 告诉 agent 如何调用 dori |
 | `DORI_PROMPTS_DIR` | 仓库的 `prompts/` | 你自己的提示词文件 |
 | `DORI_MAX_LANES`, `DORI_MAX_STARTS`, `DORI_MAX_LOAD` | 3、2、核心数 | hourly loop 的预算 |

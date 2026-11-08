@@ -82,7 +82,7 @@ herdrを起動してから、次を実行します。
 
 ```sh
 dori up
-# UP lead=w1:p1 duty=w1:p2 loop=w1:p3 hourly=w1:p4 home=~/.dori
+# UP runtime=herdr lead=w1:p1 duty=w1:p2 loop=w1:p3 hourly=w1:p4 home=~/.dori
 ```
 
 これで `dori` という名前のherdrワークスペースが開きます。中身はリードペイン（システムプロンプトに `prompts/lead.md` を追加したomo）、当番ペイン（`prompts/duty.md` 付きのomo）、その下の当番ループ、さらにその下の毎時ループです。話しかけるのはリードペインです。リードはブリーフ（目標、入力、成果物、停止条件、制約。[`examples/brief.md`](examples/brief.md) を参照）を書き、自分でレーンを開きます。同じことはシェルからもできます。
@@ -245,7 +245,7 @@ omo自体もこの方法で作られています。2026-07-13から2026-11-08の
 | `DORI_HOME` | `~/.dori` | 状態ディレクトリ |
 | `DORI_AGENT_CMD` | `omo` | 各ペインで動かすエージェント |
 | `DORI_HERDR_SESSION` | | 名前付きのherdrセッション |
-| `DORI_RUNTIME` | PATHにある方、`herdr` か `hc` | 新しいセッションをどのランタイムで開くか、`herdr` か `hc`。`$DORI_HOME/config.json` の `runtime` キーも同じ働きをします。両方ある、またはどちらもなく、何も設定されていなければ `dori` は推測せずに拒否します |
+| `DORI_RUNTIME` | いま自分がいるランタイム、なければPATHにある方（`herdr` か `hc`） | 新しいセッションをどのランタイムで開くか。`herdr` か、`hc`（herdr-core、同じプロジェクトの画面なしのセッションランタイム）です。`$DORI_HOME/config.json` の `runtime` キーも同じ働きをします。両方ある、またはどちらもなく、何も設定されておらず、どちらのペインやターミナルの中でもなければ、`dori` は推測せずに拒否します |
 | `DORI_CMD` | `src/cli.ts` へのフルパス | エージェントにdoriをどう呼ばせるか |
 | `DORI_PROMPTS_DIR` | リポジトリの `prompts/` | 自分用のプロンプトファイル |
 | `DORI_MAX_LANES`, `DORI_MAX_STARTS`, `DORI_MAX_LOAD` | 3、2、コア数 | 毎時ループの予算 |
