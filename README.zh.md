@@ -15,7 +15,7 @@ Dori 住在你的 Slack、Discord 或 Telegram 里。你在一个 thread 里告�
 
 这个仓库 `dori-superagent` 就是 Dori，采用 Sustainable Use License。Dori mode（`skills/dori-mode`）是你对话的那个 bot：它由一个给你的 coding agent 用的 skill 和一个 `dori` CLI 组成，CLI 负责开启、跟踪和关闭干活的会话，也负责和 Slack、Discord、Telegram 通信。
 
-harness（`src/`）是他背后的机房：一个 lead 会话，一个 duty loop，一个 hourly loop，宿主机能承载多少 lane 就开多少 lane，再加一个 merge gate。全部大约 4,000 行 TypeScript，跑在 [Bun](https://bun.sh) 上，没有运行时依赖。它运行在 [herdr](https://github.com/herdrdev/herdr) 和 [omo](https://github.com/code-yeongyu/oh-my-openagent) 之上。herdr 是会话所在的终端运行时，omo 是 coding agent，在 GitHub 上有 70.8k 星。
+harness（`src/`）是他背后的机房：一个 lead 会话，一个 duty loop，一个 hourly loop，宿主机能承载多少 lane 就开多少 lane，再加一个 merge gate。全部大约 4,600 行 TypeScript，跑在 [Bun](https://bun.sh) 上，没有运行时依赖。它运行在 [herdr](https://github.com/herdrdev/herdr)（或者同一项目的无界面运行时 hc，即 herdr-core）和 [omo](https://github.com/code-yeongyu/oh-my-openagent) 之上。herdr 是会话所在的终端运行时，omo 是 coding agent，在 GitHub 上有 70.8k 星。
 
 ## 你能得到什么
 
@@ -141,6 +141,12 @@ loop 只开 lane 和发消息；它从不 merge、push 或关闭 pane。完整�
 `dori start <key> --brief FILE` 把 brief 和 lane 规则写入 `~/.dori/briefs/<key>.md`，打开一个标签页，用一个指明该 brief 的提示词运行 omo，把 lane 记录为 `working`，并给 lead 发送 `[START <key>]`。之后 lane 进行汇报（`[REPORT <key>]`，或者在被自己 pane 以外的事情卡住时发 `[REPORT <key> WAITING]`），最后以 `[READY <key>]` 加上证据链接收尾。一直空闲的 lane 会在 10 分钟和 20 分钟时收到提醒，40 分钟时被升级到 lead。在 READY 之前 pane 就消失的 lane 会被报告为 `[LOST <key>]`。
 
 状态以 JSON 形式存放在 `~/.dori`（或 `$DORI_HOME`）下的磁盘上：`lanes/`、`inbox/`、`briefs/`、`receipts/`，另有给 hourly loop 用的 `backlog/` 和 `loop/`，以及存放 duty loop 停止文件的 `duty/`。除了 agent 会话，harness 额外增加的长期运行进程只有这两个 loop，唯一的运行时依赖是 Bun。
+
+### 两种会话运行时
+
+会话运行在 herdr 或 hc（[herdr-core](https://releases.herdr.dev/core/install.sh)）上，一个 home 里可以同时有两种运行时的会话。harness 通过 `src/runtime/` 里的一个接口和它们打交道，每条存下来的 lane 和角色都记得是哪个运行时打开了它，所以无论当前选的是哪个运行时，针对它的命令都会送到正确的地方。新会话在 `DORI_RUNTIME` 指定的运行时上打开，否则看 `$DORI_HOME/config.json` 里的 `"runtime": "herdr"` 或 `"runtime": "hc"`；两者都没设置时，Dori 在 hc 终端里选 hc，在 herdr pane 里选 herdr，否则选 PATH 上仅有的那一个。两个都在或都不在时会拒绝，并给出一行修复方法。`dori status` 会先打印这个选择，形如 `RUNTIME hc (from config)`。
+
+hc 上没有工作区和标签页：Dori 为每个会话打开一个带标签的终端，会话状态只来自 agent 自己的报告（一个 OSC 7501 序列，最近的 omo 版本会发送）；从不报告的 agent 保持 `unknown`，发给它的消息在 inbox 里等待。`dori migrate --to hc --all`（或 `--lane <key>`、`--role duty-loop`，加 `--dry-run` 只看计划）把会话搬到另一个运行时：它抓取一份交接 brief，打开替代会话，搬走 inbox，关闭旧会话，每个会话打印 `MIGRATED`、`SKIP`、`DEFERRED` 或 `MIGRATE_ROLLBACK`。逐个动词的对应关系见 [`docs/runtime.md`](docs/runtime.md)。
 
 ## harness 强制执行什么
 
@@ -276,12 +282,12 @@ dori 以和 omo 相同的方式发送匿名使用计数：以 OTLP/HTTP JSON 日
 ## 测试与开发
 
 ```sh
-bun test ./test/                                  # the harness: 344 tests across 34 files, no model calls
-cd skills/dori-mode/scripts && bun install && bun test   # Dori mode: 308 tests across 23 files
+bun test ./test/                                  # the harness: 386 tests across 42 files, no model calls
+cd skills/dori-mode/scripts && bun install && bun test   # Dori mode: 321 tests across 44 files
 bun run ci                                        # biome, tsc, knip, the 250-line check, both suites
 ```
 
-harness 的测试在一个假的 herdr 和 gh 上运行，时钟由测试推进；两个端到端测试会在一个隔离的命名会话里启动真实的 herdr 服务器，用一个假的 agent 脚本代替 omo，当 `herdr` 不在 PATH 上时会跳过。Dori mode 的测试在假的 herdr、git 和 gh 上运行，不碰任何真实的东西。CI 在 Ubuntu 和 macOS 上运行同样的测试。
+harness 的测试在假的 herdr、假的 hc 和假的 gh 上运行，时钟由测试推进；端到端测试会在隔离的会话里启动真实的 herdr 服务器或真实的 hc core，用一个假的 agent 脚本代替 omo，各自的二进制不在 PATH 上时自行跳过。Dori mode 的测试在假的 herdr、git 和 gh 上运行，不碰任何真实的东西。CI 在 Ubuntu 和 macOS 上运行同样的测试。
 
 ## 这不是什么
 

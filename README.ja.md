@@ -15,7 +15,7 @@ DoriはSlack、Discord、Telegramに住んでいます。スレッドでやっ�
 
 このリポジトリ `dori-superagent` は、Sustainable Use Licenseで公開しているDoriです。Dori mode（`skills/dori-mode`）は、あなたが話しかけるボットです。コーディングエージェント用のスキルと `dori` CLIで構成されていて、CLIは作業するセッションを開き、追跡し、閉じます。Slack、Discord、Telegramとのやり取りもこのCLIが担います。
 
-ハーネス（`src/`）はDoriの裏側にある機械室です。リードセッション（lead）がひとつ、当番ループ（duty loop）、毎時ループ（hourly loop）、ホストが支えられる数だけのレーン（lane）、そしてマージゲートで構成されます。[Bun](https://bun.sh) 上のTypeScript約4,000行で、ランタイム依存はありません。セッションが動くターミナルランタイムの [herdr](https://github.com/herdrdev/herdr) と、GitHubで70.8kスターを持つコーディングエージェントの [omo](https://github.com/code-yeongyu/oh-my-openagent) の上で動きます。
+ハーネス（`src/`）はDoriの裏側にある機械室です。リードセッション（lead）がひとつ、当番ループ（duty loop）、毎時ループ（hourly loop）、ホストが支えられる数だけのレーン（lane）、そしてマージゲートで構成されます。[Bun](https://bun.sh) 上のTypeScript約4,600行で、ランタイム依存はありません。セッションが動くターミナルランタイムの [herdr](https://github.com/herdrdev/herdr)（または同じプロジェクトの画面なし版であるhc、herdr-core）と、GitHubで70.8kスターを持つコーディングエージェントの [omo](https://github.com/code-yeongyu/oh-my-openagent) の上で動きます。
 
 ## できること
 
@@ -141,6 +141,12 @@ dori backlog import owner/repo --label dori     # label p1..p9 sets the priority
 `dori start <key> --brief FILE` は、ブリーフとレーンルールを `~/.dori/briefs/<key>.md` に書き、タブを開き、そのブリーフを名指ししたプロンプトでomoを起動し、レーンを `working` として記録し、リードに `[START <key>]` を送ります。そこからレーンは報告を送り（`[REPORT <key>]`、自分のペインの外で止まっているときは `[REPORT <key> WAITING]`）、最後に `[READY <key>]` と証拠リンクで終わります。アイドルのままのレーンには10分と20分で促しが入り、40分でリードにエスカレーションされます。READYの前にペインが消えたレーンは `[LOST <key>]` として報告されます。
 
 状態は `~/.dori`（または `$DORI_HOME`）以下のディスク上のJSONです。`lanes/`、`inbox/`、`briefs/`、`receipts/` に加え、毎時ループ用の `backlog/` と `loop/`、当番ループの停止ファイル用の `duty/` があります。エージェントセッション以外にハーネスが追加する常駐プロセスは2つのループだけで、ランタイム依存はBunだけです。
+
+### 2つのセッションランタイム
+
+セッションはherdrかhc（[herdr-core](https://releases.herdr.dev/core/install.sh)）の上で動き、ひとつのホームに両方のセッションを置けます。ハーネスは `src/runtime/` のひとつのインターフェースを通してそれらと話し、保存されたレーンと役割はどのランタイムが自分を開いたかを覚えているので、どちらが選ばれていてもコマンドは正しい側に届きます。新しいセッションは `DORI_RUNTIME` が名指すランタイム、なければ `$DORI_HOME/config.json` の `"runtime": "herdr"` か `"runtime": "hc"` で開きます。どちらも設定がなければ、hcのターミナル内ではhc、herdrのペイン内ではherdr、それ以外ではPATHにある方のひとつをDoriが選びます。両方ある、またはどちらもない場合は、1行の直し方を添えて拒否します。`dori status` はその選択を最初に `RUNTIME hc (from config)` のように表示します。
+
+hcにはワークスペースもタブもありません。Doriはセッションごとにラベル付きのターミナルをひとつ開き、セッションの状態はエージェント自身の報告（最近のomoビルドが送るOSC 7501シーケンス）だけから得ます。一度も報告しないエージェントは `unknown` のままで、宛てたメッセージはインボックスで待ちます。`dori migrate --to hc --all`（または `--lane <key>`、`--role duty-loop`、計画だけ見るなら `--dry-run`）はセッションをもう一方のランタイムへ移します。引き継ぎブリーフを取り、代わりのセッションを開き、インボックスを移し、古いセッションを閉じて、セッションごとに `MIGRATED`、`SKIP`、`DEFERRED`、`MIGRATE_ROLLBACK` のいずれかを表示します。動詞ごとの対応は [`docs/runtime.md`](docs/runtime.md) にあります。
 
 ## ハーネスが守らせること
 
@@ -276,12 +282,12 @@ doriはomoと同じ方法で匿名の利用カウントを送ります。OTLP/HT
 ## テストと開発
 
 ```sh
-bun test ./test/                                  # the harness: 344 tests across 34 files, no model calls
-cd skills/dori-mode/scripts && bun install && bun test   # Dori mode: 308 tests across 23 files
+bun test ./test/                                  # the harness: 386 tests across 42 files, no model calls
+cd skills/dori-mode/scripts && bun install && bun test   # Dori mode: 321 tests across 44 files
 bun run ci                                        # biome, tsc, knip, the 250-line check, both suites
 ```
 
-ハーネスのテストは、偽のherdrとgh、テストが進める時計を相手に動きます。2つのエンドツーエンドテストは、隔離した名前付きセッションで本物のherdrサーバーを起動し、omoの代わりに偽のエージェントスクリプトを使います。PATHに `herdr` がない場合はスキップされます。Dori modeのテストは偽のherdr、git、ghを相手に動き、本物には何も触れません。CIはUbuntuとmacOSで同じものを実行します。
+ハーネスのテストは、偽のherdr、偽のhc、偽のgh、テストが進める時計を相手に動きます。エンドツーエンドテストは、隔離したセッションで本物のherdrサーバーか本物のhcコアを起動し、omoの代わりに偽のエージェントスクリプトを使います。それぞれのバイナリがPATHになければ自分でスキップします。Dori modeのテストは偽のherdr、git、ghを相手に動き、本物には何も触れません。CIはUbuntuとmacOSで同じものを実行します。
 
 ## これが何でないか
 

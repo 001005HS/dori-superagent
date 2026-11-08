@@ -15,7 +15,7 @@ Dori vive nel tuo Slack, Discord o Telegram. Gli dici cosa fare in un thread, lu
 
 Questo repository, `dori-superagent`, è Dori con la Sustainable Use License. Dori mode (`skills/dori-mode`) è il bot con cui parli: una skill per il tuo coding agent più una CLI `dori` che apre, segue e chiude le sessioni che fanno il lavoro, e parla con Slack, Discord e Telegram.
 
-L'harness (`src/`) è la sala macchine dietro di lui: una sessione lead, un duty loop, un hourly loop, tante lane quante l'host ne regge e un merge gate, in circa 4.000 righe di TypeScript su [Bun](https://bun.sh) senza dipendenze a runtime. Gira su [herdr](https://github.com/herdrdev/herdr), il runtime da terminale in cui vivono le sessioni, e su [omo](https://github.com/code-yeongyu/oh-my-openagent), il coding agent, che ha 70.8k stelle su GitHub.
+L'harness (`src/`) è la sala macchine dietro di lui: una sessione lead, un duty loop, un hourly loop, tante lane quante l'host ne regge e un merge gate, in circa 4.600 righe di TypeScript su [Bun](https://bun.sh) senza dipendenze a runtime. Gira su [herdr](https://github.com/herdrdev/herdr), il runtime da terminale in cui vivono le sessioni (oppure su hc, herdr-core, la versione senza interfaccia dello stesso progetto), e su [omo](https://github.com/code-yeongyu/oh-my-openagent), il coding agent, che ha 70.8k stelle su GitHub.
 
 ## Cosa ottieni
 
@@ -141,6 +141,12 @@ Il loop apre solo lane e invia messaggi; non fa mai merge, push né chiude un pa
 `dori start <key> --brief FILE` scrive il brief più le regole della lane in `~/.dori/briefs/<key>.md`, apre una tab, lancia omo con un prompt che nomina il brief, registra la lane come `working` e invia al lead `[START <key>]`. Da lì la lane fa rapporto (`[REPORT <key>]`, oppure `[REPORT <key> WAITING]` quando è bloccata fuori dal proprio pane) e chiude con `[READY <key>]` più i suoi link di prova. Una lane che resta idle riceve un sollecito a 10 e 20 minuti e viene segnalata al lead a 40. Una lane il cui pane sparisce prima di READY viene riportata come `[LOST <key>]`.
 
 Lo stato è JSON su disco sotto `~/.dori` (o `$DORI_HOME`): `lanes/`, `inbox/`, `briefs/`, `receipts/`, più `backlog/` e `loop/` per l'hourly loop e `duty/` per il file di stop del duty loop. Oltre alle sessioni degli agenti, gli unici processi di lunga durata che l'harness aggiunge sono i due loop, e l'unica dipendenza a runtime è Bun.
+
+### Due runtime di sessione
+
+Le sessioni girano su herdr o su hc ([herdr-core](https://releases.herdr.dev/core/install.sh)), e una home può contenere sessioni su entrambi. L'harness parla con loro attraverso un'unica interfaccia in `src/runtime/`, e ogni lane e ruolo salvato ricorda quale runtime l'ha aperto, così i comandi su di esso vanno lì qualunque runtime sia selezionato. Le nuove sessioni si aprono sul runtime indicato da `DORI_RUNTIME`, altrimenti da `"runtime": "herdr"` o `"runtime": "hc"` in `$DORI_HOME/config.json`; senza nessuno dei due, Dori sceglie hc dentro un terminale hc, herdr dentro un pane herdr, e altrimenti l'unico binario nel PATH. Entrambi o nessuno viene rifiutato con una correzione in una riga. `dori status` stampa per prima la scelta, come `RUNTIME hc (from config)`.
+
+Su hc non ci sono workspace né tab: Dori apre un terminale etichettato per sessione, e lo stato di una sessione arriva solo dal rapporto dell'agente stesso (una sequenza OSC 7501, che le build recenti di omo inviano); un agente che non riferisce mai resta `unknown` e i suoi messaggi aspettano nell'inbox. `dori migrate --to hc --all` (oppure `--lane <key>`, `--role duty-loop`, con `--dry-run` per vedere il piano) sposta le sessioni sull'altro runtime: cattura un brief di passaggio, apre la sessione sostitutiva, sposta l'inbox e chiude la vecchia sessione, stampando `MIGRATED`, `SKIP`, `DEFERRED` o `MIGRATE_ROLLBACK` per sessione. La corrispondenza verbo per verbo è in [`docs/runtime.md`](docs/runtime.md).
 
 ## Cosa impone l'harness
 
@@ -276,12 +282,12 @@ Ogni record riporta anche nome e versione del servizio, l'hash di installazione,
 ## Test e sviluppo
 
 ```sh
-bun test ./test/                                  # the harness: 344 tests across 34 files, no model calls
-cd skills/dori-mode/scripts && bun install && bun test   # Dori mode: 308 tests across 23 files
+bun test ./test/                                  # the harness: 386 tests across 42 files, no model calls
+cd skills/dori-mode/scripts && bun install && bun test   # Dori mode: 321 tests across 44 files
 bun run ci                                        # biome, tsc, knip, the 250-line check, both suites
 ```
 
-I test dell'harness girano contro un herdr e un gh finti, con un orologio che i test fanno avanzare; due test end-to-end avviano un vero server herdr in una sessione con nome isolata, con uno script di agente finto al posto di omo, e vengono saltati quando `herdr` non è nel PATH. I test di Dori mode girano contro herdr, git e gh finti e non toccano nulla di reale. La CI esegue gli stessi test su Ubuntu e macOS.
+I test dell'harness girano contro un herdr finto, un hc finto e un gh finto, con un orologio che i test fanno avanzare; i test end-to-end avviano un vero server herdr o un vero core hc in una sessione isolata, con uno script di agente finto al posto di omo, e ognuno si salta da solo quando il suo binario non è nel PATH. I test di Dori mode girano contro herdr, git e gh finti e non toccano nulla di reale. La CI esegue gli stessi test su Ubuntu e macOS.
 
 ## Cosa non è
 
