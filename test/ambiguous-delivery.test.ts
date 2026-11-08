@@ -23,9 +23,16 @@ async function captureIo(run: () => Promise<number>): Promise<{ code: number; ou
   const err: string[] = [];
   const { log, error } = console;
   const write = process.stderr.write;
-  console.log = (...a: unknown[]) => { out.push(a.join(" ")); };
-  console.error = (...a: unknown[]) => { err.push(a.join(" ")); };
-  process.stderr.write = ((chunk: string | Uint8Array) => { err.push(String(chunk)); return true; }) as typeof process.stderr.write;
+  console.log = (...a: unknown[]) => {
+    out.push(a.join(" "));
+  };
+  console.error = (...a: unknown[]) => {
+    err.push(a.join(" "));
+  };
+  process.stderr.write = ((chunk: string | Uint8Array) => {
+    err.push(String(chunk));
+    return true;
+  }) as typeof process.stderr.write;
   try {
     return { code: await run(), out: out.join("\n"), err: err.join("") };
   } finally {
@@ -39,8 +46,16 @@ const HELD_LINE = (target: string) => `HELD ${target}: delivery may or may not h
 
 function addLane(d: ReturnType<World["deps"]>, key: string, paneId: string): void {
   d.store.saveLane({
-    key, paneId, tabId: "w1:t9", brief: "/dev/null", cwd: "/", status: "working",
-    createdAt: 0, lastActivityAt: 0, nudges: 0, log: [],
+    key,
+    paneId,
+    tabId: "w1:t9",
+    brief: "/dev/null",
+    cwd: "/",
+    status: "working",
+    createdAt: 0,
+    lastActivityAt: 0,
+    nudges: 0,
+    log: [],
   });
 }
 
@@ -123,7 +138,12 @@ describe("a pending Enter with newer messages queued (#89 review)", () => {
   test("send() of the newer message presses only the pending Enter, returns QUEUED, and keeps the newer message queued", async () => {
     const { w, d, lead, count } = setup();
     d.store.saveInbox("w1:p1", [
-      { at: w.clock - 1, from: "cli", text: "FIRST", attempt: { at: w.clock - 1, state: "typed", detail: "key press failed" } },
+      {
+        at: w.clock - 1,
+        from: "cli",
+        text: "FIRST",
+        attempt: { at: w.clock - 1, state: "typed", detail: "key press failed" },
+      },
     ]);
     expect(await send(d, "lead", "SECOND", "cli")).toBe("QUEUED");
     expect(count("w1:p1", "pane", "send-keys")).toBe(1);
@@ -183,7 +203,9 @@ describe("the CLI on an uncertain first delivery (#89 review)", () => {
     addLane(d, "fix-x", "w1:p2");
     w.addPane("w1:p2", "idle");
     w.promptFails.set("w1:p1", "timeout");
-    const r = await captureIo(() => main(["ready", "fix-x", "--text", "SECRET answer", "--evidence", "https://example.com/pr/1"], d));
+    const r = await captureIo(() =>
+      main(["ready", "fix-x", "--text", "SECRET answer", "--evidence", "https://example.com/pr/1"], d),
+    );
     expect(r.code).toBe(3);
     expect(r.out).toBe(`READY fix-x\n${HELD_LINE("lead")}`);
     expect(r.out + r.err).not.toContain("SECRET");
@@ -194,7 +216,7 @@ describe("the CLI on an uncertain first delivery (#89 review)", () => {
 
 describe("control", () => {
   test("normal delivery is unchanged: delivered once through agent prompt, nothing typed, inbox empty", async () => {
-    const { w, d, lead, count } = setup();
+    const { d, lead, count } = setup();
     expect(await send(d, "lead", "hello", "cli")).toBe("DELIVERED");
     expect(lead.received).toEqual(["hello"]);
     expect(count("w1:p1", "agent", "prompt")).toBe(1);

@@ -1,4 +1,15 @@
-import { mkdirSync, readdirSync, existsSync, appendFileSync, readFileSync, writeFileSync, renameSync, rmSync, linkSync, statSync } from "node:fs";
+import {
+  mkdirSync,
+  readdirSync,
+  existsSync,
+  appendFileSync,
+  readFileSync,
+  writeFileSync,
+  renameSync,
+  rmSync,
+  linkSync,
+  statSync,
+} from "node:fs";
 import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 
@@ -25,7 +36,13 @@ export type Role = "lead" | "duty";
  * and only Enter is retried; `agent` and `pgid` record which agent it was typed into (#108, see AgentIdentity).
  * `ambiguous`: it may or may not have arrived; it is held, never resent automatically.
  */
-export type DeliveryAttempt = { at: number; state: "typed" | "ambiguous"; detail?: string; agent?: string; pgid?: number };
+export type DeliveryAttempt = {
+  at: number;
+  state: "typed" | "ambiguous";
+  detail?: string;
+  agent?: string;
+  pgid?: number;
+};
 
 /** A flush lock from another host (or an unreadable one) older than this is taken over; on this host only a dead pid frees it (#108). */
 export const INBOX_LOCK_STALE_MS = 60_000;
@@ -122,13 +139,23 @@ function lockStale(path: string, content: string, now: number): boolean {
   // On this host the pid decides: a live holder keeps its lock however long a herdr call takes, or a second flush
   // would deliver the same batch again. The age rule is only for locks from another host or locks that can't be read.
   if (lock.host === hostname() && typeof lock.pid === "number") return !pidAlive(lock.pid);
-  const at = typeof lock.at === "number" ? lock.at : (() => { try { return statSync(path).mtimeMs; } catch { return now; } })();
+  const at =
+    typeof lock.at === "number"
+      ? lock.at
+      : (() => {
+          try {
+            return statSync(path).mtimeMs;
+          } catch {
+            return now;
+          }
+        })();
   return now - at > INBOX_LOCK_STALE_MS;
 }
 
 export class Store {
   constructor(readonly root: string = process.env["DORI_HOME"] ?? join(homedir(), ".dori")) {
-    for (const d of ["lanes", "inbox", "briefs", "receipts", "backlog", "loop/runs", "duty"]) mkdirSync(join(root, d), { recursive: true });
+    for (const d of ["lanes", "inbox", "briefs", "receipts", "backlog", "loop/runs", "duty"])
+      mkdirSync(join(root, d), { recursive: true });
   }
 
   private readJson<T>(path: string): T | undefined {
@@ -184,7 +211,10 @@ export class Store {
   queued(paneId: string): QueuedMessage[] {
     const p = this.inboxPath(paneId);
     if (!existsSync(p)) return [];
-    return readFileSync(p, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as QueuedMessage);
+    return readFileSync(p, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as QueuedMessage);
   }
 
   saveInbox(paneId: string, msgs: readonly QueuedMessage[]): void {
@@ -306,12 +336,16 @@ export class Store {
     }
     this.writeJson(join(dir, name), run);
     this.writeJson(this.loopPath("last-run.json"), run);
-    const files = readdirSync(dir).filter((f) => f.endsWith(".json")).sort();
+    const files = readdirSync(dir)
+      .filter((f) => f.endsWith(".json"))
+      .sort();
     for (const f of files.slice(0, Math.max(0, files.length - KEEP_RUNS))) rmSync(join(dir, f), { force: true });
     return name;
   }
 
   runs(): string[] {
-    return readdirSync(this.loopPath("runs")).filter((f) => f.endsWith(".json")).sort();
+    return readdirSync(this.loopPath("runs"))
+      .filter((f) => f.endsWith(".json"))
+      .sort();
   }
 }

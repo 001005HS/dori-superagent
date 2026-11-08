@@ -41,18 +41,52 @@ describe("herdr argv", () => {
     await h.split("w1:p1", "/w", { DORI_ROLE: "duty" });
     expect(r.calls).toEqual([
       ["workspace", "create", "--label", "dori", "--cwd", "/w", "--no-focus"],
-      ["tab", "create", "--label", "fix-login", "--cwd", "/w", "--no-focus", "--workspace", "w3", "--env", "DORI_LANE=fix-login", "--env", "NOTE=a b"],
+      [
+        "tab",
+        "create",
+        "--label",
+        "fix-login",
+        "--cwd",
+        "/w",
+        "--no-focus",
+        "--workspace",
+        "w3",
+        "--env",
+        "DORI_LANE=fix-login",
+        "--env",
+        "NOTE=a b",
+      ],
       ["tab", "create", "--label", "other", "--cwd", "/w", "--no-focus"],
-      ["pane", "split", "w1:p1", "--direction", "down", "--ratio", "0.3", "--cwd", "/w", "--no-focus", "--env", "DORI_ROLE=duty"],
+      [
+        "pane",
+        "split",
+        "w1:p1",
+        "--direction",
+        "down",
+        "--ratio",
+        "0.3",
+        "--cwd",
+        "/w",
+        "--no-focus",
+        "--env",
+        "DORI_ROLE=duty",
+      ],
     ]);
   });
 
   test("a message is one argv element, delivered verbatim: quotes, $(...) and newlines are never expanded", async () => {
-    const r = recorder((argv) => ok(argv[1] === "process-info" ? { process_info: { foreground_processes: [{ name: "omo", argv: ["omo"] }] } } : {}));
+    const r = recorder((argv) =>
+      ok(
+        argv[1] === "process-info" ? { process_info: { foreground_processes: [{ name: "omo", argv: ["omo"] }] } } : {},
+      ),
+    );
     const h = new Herdr(r.exec, "");
     const text = `it's "done" $(rm -rf ~) \`id\`\nline two`;
     expect(await h.deliver("w1:p1", text)).toBe(true);
-    expect(r.calls).toEqual([["pane", "process-info", "--pane", "w1:p1"], ["agent", "prompt", "w1:p1", text]]);
+    expect(r.calls).toEqual([
+      ["pane", "process-info", "--pane", "w1:p1"],
+      ["agent", "prompt", "w1:p1", text],
+    ]);
   });
 });
 
@@ -66,7 +100,9 @@ describe("herdr replies", () => {
     const onStdout = new Herdr(recorder(() => fail("", '{"error":{"code":"pane_not_found"}}\n')).exec, "iso");
     const e = await onStdout.close("w1:p7").catch((x: unknown) => x);
     expect(e).toBeInstanceOf(HerdrError);
-    expect((e as HerdrError).message).toBe('herdr --session iso pane close w1:p7 failed (1): {"error":{"code":"pane_not_found"}}');
+    expect((e as HerdrError).message).toBe(
+      'herdr --session iso pane close w1:p7 failed (1): {"error":{"code":"pane_not_found"}}',
+    );
     const onStderr = new Herdr(recorder(() => fail("socket closed", "partial")).exec, "");
     await expect(onStderr.read("w1:p7")).rejects.toThrow("failed (1): socket closed");
   });
@@ -80,15 +116,16 @@ describe("herdr replies", () => {
     const status = (reply: ExecResult) => new Herdr(recorder(() => reply).exec, "").status("w1:p1");
     expect(await status(fail('{"error":{"code":"pane_not_found","message":"pane w1:p1 not found"}}'))).toBe("gone");
     expect(await status(ok({}))).toBe("gone");
-    await expect(status(fail('{"error":{"code":"server_not_running","message":"no herdr server is running"}}'))).rejects.toThrow(
-      "server_not_running",
-    );
+    await expect(
+      status(fail('{"error":{"code":"server_not_running","message":"no herdr server is running"}}')),
+    ).rejects.toThrow("server_not_running");
   });
 
   test("status: no agent is a shell; herdr's four states pass through and anything else is unknown", async () => {
     const status = (p: Record<string, unknown>) => new Herdr(recorder(() => ok({ pane: p })).exec, "").status("w1:p1");
     expect(await status({ agent: null, agent_status: "idle" })).toBe("shell");
-    for (const s of ["idle", "working", "blocked", "done"] as const) expect(await status({ agent: "omo", agent_status: s })).toBe(s);
+    for (const s of ["idle", "working", "blocked", "done"] as const)
+      expect(await status({ agent: "omo", agent_status: s })).toBe(s);
     expect(await status({ agent: "omo", agent_status: "compacting" })).toBe("unknown");
     expect(await status({ agent: "omo" })).toBe("unknown");
   });
@@ -104,14 +141,22 @@ describe("shq", () => {
 });
 
 describe("interactiveShellInFront (#66: a suspended agent leaves its shell in front)", () => {
-  const front = (...procs: { name?: string; argv?: string[] }[]) => interactiveShellInFront({ foreground_processes: procs });
+  const front = (...procs: { name?: string; argv?: string[] }[]) =>
+    interactiveShellInFront({ foreground_processes: procs });
   test.each([
     ["login shell", [{ name: "-bash", argv: ["-bash"] }], true],
     ["interactive zsh by path, upper case", [{ name: "/bin/ZSH", argv: ["/bin/zsh", "-i"] }], true],
     ["bash -C (noclobber) is still interactive", [{ name: "bash", argv: ["bash", "-C"] }], true],
     ["busybox sh applet", [{ name: "busybox", argv: ["busybox", "sh"] }], true],
     ["shell entry without argv", [{ name: "fish" }], true],
-    ["agent with a sh -c child", [{ name: "omo", argv: ["omo"] }, { name: "sh", argv: ["sh", "-c", "sleep 1"] }], false],
+    [
+      "agent with a sh -c child",
+      [
+        { name: "omo", argv: ["omo"] },
+        { name: "sh", argv: ["sh", "-c", "sleep 1"] },
+      ],
+      false,
+    ],
     ["shell running a script is held, the safe side", [{ name: "bash", argv: ["bash", "tool.sh"] }], true],
     ["interactive bash with --rcfile FILE", [{ name: "bash", argv: ["bash", "--rcfile", "/tmp/rc"] }], true],
     ["interactive zsh with -o OPT", [{ name: "zsh", argv: ["zsh", "-o", "vi"] }], true],
@@ -123,7 +168,11 @@ describe("interactiveShellInFront (#66: a suspended agent leaves its shell in fr
     ["bash -ic cmd runs a command", [{ name: "bash", argv: ["bash", "-ic", "make"] }], false],
     ["pwsh -EncodedCommand", [{ name: "pwsh", argv: ["pwsh", "-EncodedCommand", "ZQBjAGgAbwA="] }], false],
     ["pwsh -Interactive", [{ name: "pwsh", argv: ["pwsh", "-Interactive"] }], true],
-    ["pwsh -NoProfile -ExecutionPolicy Bypass", [{ name: "pwsh", argv: ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass"] }], true],
+    [
+      "pwsh -NoProfile -ExecutionPolicy Bypass",
+      [{ name: "pwsh", argv: ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass"] }],
+      true,
+    ],
     ["pwsh -NoExit -Command keeps a prompt", [{ name: "pwsh", argv: ["pwsh", "-NoExit", "-Command", "ls"] }], true],
     ["pwsh -noex -c keeps a prompt", [{ name: "pwsh", argv: ["pwsh", "-noex", "-c", "ls"] }], true],
     ["pwsh --noexi -Command keeps a prompt", [{ name: "pwsh", argv: ["pwsh", "--noexi", "-Command", "ls"] }], true],

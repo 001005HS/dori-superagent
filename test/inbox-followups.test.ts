@@ -33,7 +33,9 @@ async function typedEntry(s: ReturnType<typeof setup>): Promise<void> {
 async function captureIo(run: () => Promise<number>): Promise<{ code: number; out: string }> {
   const out: string[] = [];
   const log = console.log;
-  console.log = (...a: unknown[]) => { out.push(a.join(" ")); };
+  console.log = (...a: unknown[]) => {
+    out.push(a.join(" "));
+  };
   try {
     return { code: await run(), out: out.join("\n") };
   } finally {
@@ -54,13 +56,17 @@ describe("a typed entry whose pane's agent changed is held, never Entered (#108 
     const s = setup();
     await typedEntry(s);
     s.pane.status = "shell";
-    expect(await dutyTick(s.d)).toContainEqual(expect.objectContaining({ pane: "w1:p2", action: "delivery-ambiguous" }));
+    expect(await dutyTick(s.d)).toContainEqual(
+      expect.objectContaining({ pane: "w1:p2", action: "delivery-ambiguous" }),
+    );
     expect(s.d.store.queued("w1:p2").map((m) => m.attempt?.state)).toEqual(["ambiguous"]);
 
     s.pane.status = "idle";
     s.pane.pgid = 202;
     for (let i = 0; i < 2; i++) {
-      expect(await dutyTick(s.d)).toContainEqual(expect.objectContaining({ pane: "w1:p2", action: "delivery-ambiguous" }));
+      expect(await dutyTick(s.d)).toContainEqual(
+        expect.objectContaining({ pane: "w1:p2", action: "delivery-ambiguous" }),
+      );
     }
     expect(s.count("w1:p2", "pane", "send-keys")).toBe(3);
     expect(s.count("w1:p2", "pane", "send-text")).toBe(1);
@@ -73,7 +79,9 @@ describe("a typed entry whose pane's agent changed is held, never Entered (#108 
     const s = setup();
     await typedEntry(s);
     s.pane.pgid = 777;
-    expect(await dutyTick(s.d)).toContainEqual(expect.objectContaining({ pane: "w1:p2", action: "delivery-ambiguous" }));
+    expect(await dutyTick(s.d)).toContainEqual(
+      expect.objectContaining({ pane: "w1:p2", action: "delivery-ambiguous" }),
+    );
     await dutyTick(s.d);
     expect(s.count("w1:p2", "pane", "send-keys")).toBe(3);
     expect(s.d.store.queued("w1:p2").map((m) => m.attempt?.state)).toEqual(["ambiguous"]);
@@ -145,8 +153,12 @@ describe("releasing held entries: dori inbox list | ack | resend (#108 2)", () =
 
   test("resend clears the attempt, and the next flush delivers it exactly once", async () => {
     const s = setup();
-    s.d.store.saveInbox("w1:p2", [{ at: 0, from: "cli", text: "again", attempt: { at: 1, state: "ambiguous", detail: "timeout" } }]);
-    expect(await dutyTick(s.d)).toContainEqual(expect.objectContaining({ pane: "w1:p2", action: "delivery-ambiguous" }));
+    s.d.store.saveInbox("w1:p2", [
+      { at: 0, from: "cli", text: "again", attempt: { at: 1, state: "ambiguous", detail: "timeout" } },
+    ]);
+    expect(await dutyTick(s.d)).toContainEqual(
+      expect.objectContaining({ pane: "w1:p2", action: "delivery-ambiguous" }),
+    );
     expect(s.pane.received).toEqual([]);
     const r = await captureIo(() => main(["inbox", "resend", "w1:p2", "1"], s.d));
     expect(r.out).toBe("RELEASED w1:p2 1: the next flush delivers it");
@@ -191,7 +203,9 @@ describe("one flush per pane (#108 3)", () => {
     s.pane.status = "idle";
     let second: Promise<string> | undefined;
     // The first flush's `pane get` starts the second flush: both are in flight at the same time, with no timing.
-    s.w.getHook.set("w1:p2", (n) => { if (n === 2) second = flushInbox(s.d, "w1:p2"); });
+    s.w.getHook.set("w1:p2", (n) => {
+      if (n === 2) second = flushInbox(s.d, "w1:p2");
+    });
     const first = await flushInbox(s.d, "w1:p2");
     expect(second).toBeDefined();
     expect([first, await second]).toEqual(["delivered", "queued"]);

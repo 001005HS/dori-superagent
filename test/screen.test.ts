@@ -25,7 +25,9 @@ describe("omoScreenIdle (#62: herdr reports an omo with live monitors as working
   });
 
   test("an idle box with esc to interrupt anywhere on the screen is not idle", async () => {
-    expect(omoScreenIdle("── • Working (9s • esc to interrupt) ──\n" + (await screen("omo-idle-live-monitors")))).toBe(false);
+    expect(omoScreenIdle("── • Working (9s • esc to interrupt) ──\n" + (await screen("omo-idle-live-monitors")))).toBe(
+      false,
+    );
   });
 
   test("an idle box scrolled up above other output is not the bottom of the screen: not idle", async () => {

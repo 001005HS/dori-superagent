@@ -10,7 +10,12 @@ export type Signal =
   | { readonly kind: "merged" | "closed"; readonly repo: string; readonly n: string }
   | { readonly kind: "published"; readonly pkg: string; readonly version: string }
   | { readonly kind: "command"; readonly argv: readonly string[]; readonly stdout?: RegExp }
-  | { readonly kind: "file"; readonly path: string; readonly sha256?: string; readonly json?: { readonly path: readonly (string | number)[]; readonly value: unknown } }
+  | {
+      readonly kind: "file";
+      readonly path: string;
+      readonly sha256?: string;
+      readonly json?: { readonly path: readonly (string | number)[]; readonly value: unknown };
+    }
   | { readonly kind: "url"; readonly url: string; readonly status: number; readonly body?: RegExp };
 
 export type SignalIo = { readonly http?: Http; readonly cwd?: string; readonly home?: string };
@@ -21,7 +26,7 @@ export const UNREADABLE = [
   "unreadable signal; use one of:",
   "merged <owner/repo>#N | closed <owner/repo>#N | published <pkg>@<version>",
   'command ["argv","as","json"] [stdout~"regex"]',
-  'file <path> [sha256=<hex>] [json:.a.b=<json value>]',
+  "file <path> [sha256=<hex>] [json:.a.b=<json value>]",
   'url <http(s) url> [status=200] [body~"regex"]',
 ].join(" ");
 
@@ -60,7 +65,8 @@ const readJson = (s: string, i: number): { readonly value: unknown; readonly end
   try {
     return { value: JSON.parse(text), end };
   } catch {
-    if (open === '"' || open === "[" || open === "{") throw new SignalSyntaxError(`not valid JSON at "${text.slice(0, 40)}"`);
+    if (open === '"' || open === "[" || open === "{")
+      throw new SignalSyntaxError(`not valid JSON at "${text.slice(0, 40)}"`);
     return { value: text, end };
   }
 };
@@ -131,23 +137,44 @@ export const parseSignal = (raw: string): Signal => {
   if (kind === "command") {
     if (s[at] !== "[") throw new SignalSyntaxError('command takes a JSON argv array, e.g. command ["bun","test"]');
     const { value, end } = readJson(s, at);
-    if (!Array.isArray(value) || !value.length || !value.every((a) => typeof a === "string" && a.length > 0)) throw new SignalSyntaxError("command argv must be a non-empty array of non-empty strings");
+    if (!Array.isArray(value) || !value.length || !value.every((a) => typeof a === "string" && a.length > 0))
+      throw new SignalSyntaxError("command argv must be a non-empty array of non-empty strings");
     const opts = readOptions(s, end);
     onlyKeys(opts, (k) => k === "stdout", "command");
-    return { kind: "command", argv: value as string[], stdout: regex(opts.find((o) => o.key === "stdout"), "stdout") };
+    const stdout = regex(
+      opts.find((o) => o.key === "stdout"),
+      "stdout",
+    );
+    return { kind: "command", argv: value as string[], ...(stdout !== undefined ? { stdout } : {}) };
   }
   if (kind === "file") {
-    const pathTok = s[at] === '"' ? readJson(s, at) : { value: /^\S+/.exec(s.slice(at))?.[0] ?? "", end: at + (/^\S+/.exec(s.slice(at))?.[0].length ?? 0) };
+    const pathTok =
+      s[at] === '"'
+        ? readJson(s, at)
+        : { value: /^\S+/.exec(s.slice(at))?.[0] ?? "", end: at + (/^\S+/.exec(s.slice(at))?.[0].length ?? 0) };
     if (typeof pathTok.value !== "string" || !pathTok.value) throw new SignalSyntaxError("file needs a path");
     const opts = readOptions(s, pathTok.end);
     onlyKeys(opts, (k) => k === "sha256" || k.startsWith("json:"), "file");
     const sha = opts.find((o) => o.key === "sha256");
-    if (sha && (sha.op !== "=" || typeof sha.value !== "string" || !/^[0-9a-f]{64}$/i.test(sha.value))) throw new SignalSyntaxError("sha256= takes 64 hex characters");
+    if (sha && (sha.op !== "=" || typeof sha.value !== "string" || !/^[0-9a-f]{64}$/i.test(sha.value)))
+      throw new SignalSyntaxError("sha256= takes 64 hex characters");
     const js = opts.find((o) => o.key.startsWith("json:"));
     if (js && js.op !== "=") throw new SignalSyntaxError("json:<path> takes =<json value>");
-    const jsonPath = js ? js.key.slice(5).replace(/^\./, "").split(".").filter(Boolean).map((p) => (/^\d+$/.test(p) ? Number(p) : p)) : [];
+    const jsonPath = js
+      ? js.key
+          .slice(5)
+          .replace(/^\./, "")
+          .split(".")
+          .filter(Boolean)
+          .map((p) => (/^\d+$/.test(p) ? Number(p) : p))
+      : [];
     if (js && !jsonPath.length) throw new SignalSyntaxError("json: needs a field path like json:.version");
-    return { kind: "file", path: pathTok.value, ...(sha ? { sha256: String(sha.value).toLowerCase() } : {}), ...(js ? { json: { path: jsonPath, value: js.value } } : {}) };
+    return {
+      kind: "file",
+      path: pathTok.value,
+      ...(sha ? { sha256: String(sha.value).toLowerCase() } : {}),
+      ...(js ? { json: { path: jsonPath, value: js.value } } : {}),
+    };
   }
   const urlTok = /^\S+/.exec(s.slice(at))?.[0] ?? "";
   if (!/^https?:\/\/\S+$/i.test(urlTok)) throw new SignalSyntaxError("url needs an http(s) URL");
@@ -155,7 +182,11 @@ export const parseSignal = (raw: string): Signal => {
   onlyKeys(opts, (k) => k === "status" || k === "body", "url");
   const st = opts.find((o) => o.key === "status");
   if (st && (st.op !== "=" || !Number.isInteger(st.value))) throw new SignalSyntaxError("status= takes an integer");
-  return { kind: "url", url: urlTok, status: st ? Number(st.value) : 200, body: regex(opts.find((o) => o.key === "body"), "body") };
+  const body = regex(
+    opts.find((o) => o.key === "body"),
+    "body",
+  );
+  return { kind: "url", url: urlTok, status: st ? Number(st.value) : 200, ...(body !== undefined ? { body } : {}) };
 };
 
 const resolvePath = (p: string, io: SignalIo): string => {
@@ -188,7 +219,11 @@ export const checkSignal = async (signal: string, run: Runner, io: SignalIo = {}
       const r = await run(["gh", "pr", "view", sig.n, "--repo", sig.repo, "--json", "state,mergeCommit"]);
       const j = r.code === 0 ? (JSON.parse(r.out) as { state?: string; mergeCommit?: { oid?: string } | null }) : {};
       const sha = j.mergeCommit?.oid ?? "";
-      return { signal: s, ok: j.state === "MERGED" && sha.length > 0, detail: j.state ? `${j.state} ${sha.slice(0, 10)}`.trim() : r.err || "no answer" };
+      return {
+        signal: s,
+        ok: j.state === "MERGED" && sha.length > 0,
+        detail: j.state ? `${j.state} ${sha.slice(0, 10)}`.trim() : r.err || "no answer",
+      };
     }
     case "closed": {
       const r = await run(["gh", "issue", "view", sig.n, "--repo", sig.repo, "--json", "state"]);
@@ -199,12 +234,22 @@ export const checkSignal = async (signal: string, run: Runner, io: SignalIo = {}
       const r = await run(["npm", "view", `${sig.pkg}@${sig.version}`, "version", "--json"]);
       // npm 12 prints `version --json` as an array, older npm as a bare string.
       const ok = r.code === 0 && publishedVersions(r.out).includes(sig.version);
-      return { signal: s, ok, detail: ok ? `registry has ${sig.pkg}@${sig.version}` : r.err || r.out || "not published" };
+      return {
+        signal: s,
+        ok,
+        detail: ok ? `registry has ${sig.pkg}@${sig.version}` : r.err || r.out || "not published",
+      };
     }
     case "command": {
       const r = await run(sig.argv, { ...(io.cwd ? { cwd: io.cwd } : {}), timeoutMs: COMMAND_TIMEOUT_MS });
-      if (r.code !== 0) return { signal: s, ok: false, detail: `exit ${r.code}: ${short(r.err || r.out) || "no output"}` };
-      if (sig.stdout && !sig.stdout.test(r.out)) return { signal: s, ok: false, detail: `exit 0 but stdout does not match ${sig.stdout}: ${short(r.out) || "(empty)"}` };
+      if (r.code !== 0)
+        return { signal: s, ok: false, detail: `exit ${r.code}: ${short(r.err || r.out) || "no output"}` };
+      if (sig.stdout && !sig.stdout.test(r.out))
+        return {
+          signal: s,
+          ok: false,
+          detail: `exit 0 but stdout does not match ${sig.stdout}: ${short(r.out) || "(empty)"}`,
+        };
       return { signal: s, ok: true, detail: sig.stdout ? `exit 0, stdout matches ${sig.stdout}` : "exit 0" };
     }
     case "file": {
@@ -213,7 +258,8 @@ export const checkSignal = async (signal: string, run: Runner, io: SignalIo = {}
       if (!(await f.exists())) return { signal: s, ok: false, detail: `missing: ${path}` };
       if (sig.sha256) {
         const got = new Bun.CryptoHasher("sha256").update(await f.arrayBuffer()).digest("hex");
-        if (got !== sig.sha256) return { signal: s, ok: false, detail: `sha256 ${got.slice(0, 12)}… != ${sig.sha256.slice(0, 12)}…` };
+        if (got !== sig.sha256)
+          return { signal: s, ok: false, detail: `sha256 ${got.slice(0, 12)}… != ${sig.sha256.slice(0, 12)}…` };
       }
       if (sig.json) {
         let parsed: unknown;
@@ -225,9 +271,18 @@ export const checkSignal = async (signal: string, run: Runner, io: SignalIo = {}
         const hit = dig(parsed, sig.json.path);
         const want = JSON.stringify(sig.json.value);
         if (!hit.found) return { signal: s, ok: false, detail: `no field .${sig.json.path.join(".")}` };
-        if (JSON.stringify(hit.value) !== want) return { signal: s, ok: false, detail: `.${sig.json.path.join(".")} is ${short(JSON.stringify(hit.value))}, want ${want}` };
+        if (JSON.stringify(hit.value) !== want)
+          return {
+            signal: s,
+            ok: false,
+            detail: `.${sig.json.path.join(".")} is ${short(JSON.stringify(hit.value))}, want ${want}`,
+          };
       }
-      return { signal: s, ok: true, detail: `present${sig.sha256 ? ", sha256 matches" : ""}${sig.json ? `, .${sig.json.path.join(".")} matches` : ""}` };
+      return {
+        signal: s,
+        ok: true,
+        detail: `present${sig.sha256 ? ", sha256 matches" : ""}${sig.json ? `, .${sig.json.path.join(".")} matches` : ""}`,
+      };
     }
     case "url": {
       let res: { readonly status: number; readonly body: string };
@@ -236,8 +291,10 @@ export const checkSignal = async (signal: string, run: Runner, io: SignalIo = {}
       } catch (e) {
         return { signal: s, ok: false, detail: `request failed: ${short(String(e))}` };
       }
-      if (res.status !== sig.status) return { signal: s, ok: false, detail: `status ${res.status}, want ${sig.status}` };
-      if (sig.body && !sig.body.test(res.body)) return { signal: s, ok: false, detail: `status ${res.status} but body does not match ${sig.body}` };
+      if (res.status !== sig.status)
+        return { signal: s, ok: false, detail: `status ${res.status}, want ${sig.status}` };
+      if (sig.body && !sig.body.test(res.body))
+        return { signal: s, ok: false, detail: `status ${res.status} but body does not match ${sig.body}` };
       return { signal: s, ok: true, detail: `status ${res.status}${sig.body ? ", body matches" : ""}` };
     }
   }

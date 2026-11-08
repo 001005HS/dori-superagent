@@ -19,7 +19,7 @@ export type Lane = {
   readonly key: string;
   readonly title: string;
   readonly thread: string;
-  readonly pane?: string;
+  readonly pane?: string | undefined;
   readonly tab?: string;
   readonly session?: string;
   readonly sessionVia?: string;
@@ -38,26 +38,32 @@ export type Lane = {
   readonly lastNudgeAt?: number;
   readonly lastAutoReplyAt?: number;
   /** The [REPORT] line the freshness sweep last posted, so a stale screen is never posted twice. */
-  readonly lastPostedReport?: string;
+  readonly lastPostedReport?: string | undefined;
   /** The [REPORT] line seen on the previous freshness tick (a line is posted only once it holds across two ticks). */
-  readonly lastSeenReport?: string;
+  readonly lastSeenReport?: string | undefined;
   /** The last held-back freshness outcome, so a quiet lane logs each state change once, not every tick. */
-  readonly lastFreshnessNote?: string;
+  readonly lastFreshnessNote?: string | undefined;
   /** A paused lane whose pane read working on the previous freshness tick (two in a row is reported, never a resume). */
-  readonly pausedSeenWorking?: boolean;
+  readonly pausedSeenWorking?: boolean | undefined;
   /** The status a paused lane had before it was paused; `resume` restores it. */
-  readonly pausedFrom?: LaneStatus;
-  readonly reportProtocol?: "jsonl-v1";
+  readonly pausedFrom?: LaneStatus | undefined;
+  readonly reportProtocol?: "jsonl-v1" | undefined;
   readonly budget?: BudgetLimits;
   readonly activityPaths?: readonly string[];
   /** The last supervision failure printed by `freshness`, so the same one is printed once. */
-  readonly lastSupervisionError?: string;
+  readonly lastSupervisionError?: string | undefined;
   readonly receipt?: unknown;
 };
 
 export const statusOf = (lane: Lane): LaneStatus => (lane.closedAt ? "closed" : (lane.status ?? "working"));
 
-export const withStatus = (lane: Lane, status: LaneStatus, note: string, at: string, patch: Partial<Lane> = {}): Lane => ({
+export const withStatus = (
+  lane: Lane,
+  status: LaneStatus,
+  note: string,
+  at: string,
+  patch: Partial<Lane> = {},
+): Lane => ({
   ...lane,
   ...patch,
   status,
@@ -90,7 +96,9 @@ export class Registry {
   // Reading never creates the lanes directory (dori boot is read-only); write() creates it.
   private files(): string[] {
     try {
-      return readdirSync(this.dir).filter((f) => f.endsWith(".json")).map((f) => join(this.dir, f));
+      return readdirSync(this.dir)
+        .filter((f) => f.endsWith(".json"))
+        .map((f) => join(this.dir, f));
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === "ENOENT") return [];
       throw e;
@@ -110,7 +118,8 @@ export class Registry {
     for (const f of this.files()) {
       try {
         const lane: unknown = await Bun.file(f).json();
-        if (typeof lane !== "object" || lane === null || !("key" in lane) || typeof lane.key !== "string") throw new Error("not a lane record");
+        if (typeof lane !== "object" || lane === null || !("key" in lane) || typeof lane.key !== "string")
+          throw new Error("not a lane record");
         lanes.push(lane as Lane);
       } catch {
         unreadable.push(f);
