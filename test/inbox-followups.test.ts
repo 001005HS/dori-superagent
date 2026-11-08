@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { main } from "../src/cli.ts";
 import { dutyTick } from "../src/duty.ts";
 import { captureIo, setup, typedEntry } from "./inbox-setup.ts";
+import { href } from "./fake.ts";
 
 // #108: follow-ups to #89 (PR 102).
 
@@ -11,7 +12,7 @@ describe("a typed entry whose pane's agent changed is held, never Entered (#108 
     s.pane.agent = "omo";
     s.pane.pgid = 4242;
     await typedEntry(s);
-    expect(s.d.store.queued("w1:p2")[0]!.attempt).toMatchObject({ state: "typed", agent: "omo", pgid: 4242 });
+    expect(s.d.store.queued(href("w1:p2"))[0]!.attempt).toMatchObject({ state: "typed", agent: "omo", pgid: 4242 });
   });
 
   test("the agent exits (no agent in the pane): held, the lead is told once, and no Enter when an agent comes back", async () => {
@@ -21,7 +22,7 @@ describe("a typed entry whose pane's agent changed is held, never Entered (#108 
     expect(await dutyTick(s.d)).toContainEqual(
       expect.objectContaining({ pane: "w1:p2", action: "delivery-ambiguous" }),
     );
-    expect(s.d.store.queued("w1:p2").map((m) => m.attempt?.state)).toEqual(["ambiguous"]);
+    expect(s.d.store.queued(href("w1:p2")).map((m) => m.attempt?.state)).toEqual(["ambiguous"]);
 
     s.pane.status = "idle";
     s.pane.pgid = 202;
@@ -46,7 +47,7 @@ describe("a typed entry whose pane's agent changed is held, never Entered (#108 
     );
     await dutyTick(s.d);
     expect(s.count("w1:p2", "pane", "send-keys")).toBe(3);
-    expect(s.d.store.queued("w1:p2").map((m) => m.attempt?.state)).toEqual(["ambiguous"]);
+    expect(s.d.store.queued(href("w1:p2")).map((m) => m.attempt?.state)).toEqual(["ambiguous"]);
     expect(s.notices()).toHaveLength(1);
   });
 
@@ -56,7 +57,7 @@ describe("a typed entry whose pane's agent changed is held, never Entered (#108 
     s.pane.agent = "claude";
     await dutyTick(s.d);
     expect(s.count("w1:p2", "pane", "send-keys")).toBe(3);
-    expect(s.d.store.queued("w1:p2").map((m) => m.attempt?.state)).toEqual(["ambiguous"]);
+    expect(s.d.store.queued(href("w1:p2")).map((m) => m.attempt?.state)).toEqual(["ambiguous"]);
     expect(s.notices()).toHaveLength(1);
   });
 
@@ -65,7 +66,7 @@ describe("a typed entry whose pane's agent changed is held, never Entered (#108 
     await typedEntry(s);
     expect(await dutyTick(s.d)).toEqual([{ pane: "w1:p2", action: "flushed" }]);
     expect(s.count("w1:p2", "pane", "send-keys")).toBe(4);
-    expect(s.d.store.queued("w1:p2")).toEqual([]);
+    expect(s.d.store.queued(href("w1:p2"))).toEqual([]);
     expect(s.notices()).toEqual([]);
   });
 });
@@ -73,7 +74,7 @@ describe("a typed entry whose pane's agent changed is held, never Entered (#108 
 describe("releasing held entries: dori inbox list | ack | resend (#108 2)", () => {
   function heldInbox(s: ReturnType<typeof setup>) {
     const long = `SECRET "quoted"\n${"x".repeat(100)}`;
-    s.d.store.saveInbox("w1:p2", [
+    s.d.store.saveInbox(href("w1:p2"), [
       { at: 0, from: "lane-a", text: long, attempt: { at: 1, state: "ambiguous", detail: "timeout" } },
       { at: 60_000, from: "cli", text: "typed one", attempt: { at: 60_001, state: "typed" } },
       { at: 120_000, from: "duty", text: "plain" },
@@ -97,10 +98,10 @@ describe("releasing held entries: dori inbox list | ack | resend (#108 2)", () =
   test("ack drops the held entry and nothing else; a role name resolves to its pane", async () => {
     const s = setup();
     heldInbox(s);
-    s.d.store.setRole("duty", "w1:p2");
+    s.d.store.setRole("duty", href("w1:p2"));
     const r = await captureIo(() => main(["inbox", "ack", "duty", "1"], s.d));
     expect(r).toEqual({ code: 0, out: "ACKED w1:p2 1" });
-    expect(s.d.store.queued("w1:p2").map((m) => m.text)).toEqual(["typed one", "plain"]);
+    expect(s.d.store.queued(href("w1:p2")).map((m) => m.text)).toEqual(["typed one", "plain"]);
   });
 
   test("ack and resend refuse an entry that is not held, and an index out of range", async () => {
@@ -110,12 +111,12 @@ describe("releasing held entries: dori inbox list | ack | resend (#108 2)", () =
     await expect(main(["inbox", "resend", "w1:p2", "3"], s.d)).rejects.toThrow(/not held/);
     await expect(main(["inbox", "ack", "w1:p2", "4"], s.d)).rejects.toThrow(/no entry 4/);
     await expect(main(["inbox", "ack", "w1:p2", "x"], s.d)).rejects.toThrow(/no entry/);
-    expect(s.d.store.queued("w1:p2")).toHaveLength(3);
+    expect(s.d.store.queued(href("w1:p2"))).toHaveLength(3);
   });
 
   test("resend clears the attempt, and the next flush delivers it exactly once", async () => {
     const s = setup();
-    s.d.store.saveInbox("w1:p2", [
+    s.d.store.saveInbox(href("w1:p2"), [
       { at: 0, from: "cli", text: "again", attempt: { at: 1, state: "ambiguous", detail: "timeout" } },
     ]);
     expect(await dutyTick(s.d)).toContainEqual(
@@ -124,7 +125,7 @@ describe("releasing held entries: dori inbox list | ack | resend (#108 2)", () =
     expect(s.pane.received).toEqual([]);
     const r = await captureIo(() => main(["inbox", "resend", "w1:p2", "1"], s.d));
     expect(r.out).toBe("RELEASED w1:p2 1: the next flush delivers it");
-    expect(s.d.store.queued("w1:p2")).toEqual([{ at: 0, from: "cli", text: "again" }]);
+    expect(s.d.store.queued(href("w1:p2"))).toEqual([{ at: 0, from: "cli", text: "again" }]);
     expect(await dutyTick(s.d)).toEqual([{ pane: "w1:p2", action: "flushed" }]);
     expect(await dutyTick(s.d)).toEqual([]);
     expect(s.pane.received).toEqual(["again"]);
@@ -132,7 +133,7 @@ describe("releasing held entries: dori inbox list | ack | resend (#108 2)", () =
 
   test("a gone pane with only held entries reports inbox-target-gone, not delivery-ambiguous", async () => {
     const s = setup();
-    s.d.store.saveInbox("w1:p2", [{ at: 0, from: "cli", text: "held", attempt: { at: 1, state: "ambiguous" } }]);
+    s.d.store.saveInbox(href("w1:p2"), [{ at: 0, from: "cli", text: "held", attempt: { at: 1, state: "ambiguous" } }]);
     s.w.panes.delete("w1:p2");
     expect(await dutyTick(s.d)).toEqual([{ pane: "w1:p2", action: "inbox-target-gone" }]);
   });

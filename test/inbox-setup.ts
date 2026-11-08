@@ -1,6 +1,6 @@
 import { expect } from "bun:test";
 import { send } from "../src/harness.ts";
-import { World } from "./fake.ts";
+import { World, href } from "./fake.ts";
 
 export const NOT_READY = '{"error":{"code":"agent_not_ready"}}';
 
@@ -8,7 +8,7 @@ export function setup() {
   const w = new World();
   const d = w.deps();
   const lead = w.addPane("w1:p1", "idle");
-  d.store.setRole("lead", "w1:p1");
+  d.store.setRole("lead", href("w1:p1"));
   const pane = w.addPane("w1:p2", "idle");
   const count = (id: string, group: string, verb: string) =>
     w.calls.filter((c) => c.argv[0] === group && c.argv[1] === verb && c.argv[2] === id).length;
@@ -21,7 +21,7 @@ export async function typedEntry(s: ReturnType<typeof setup>): Promise<void> {
   s.w.promptFails.set("w1:p2", NOT_READY);
   s.w.keyFails = 3;
   expect(await send(s.d, "w1:p2", "SECRET instruction", "cli")).toBe("QUEUED");
-  expect(s.d.store.queued("w1:p2").map((m) => m.attempt?.state)).toEqual(["typed"]);
+  expect(s.d.store.queued(href("w1:p2")).map((m) => m.attempt?.state)).toEqual(["typed"]);
 }
 
 export async function captureIo(run: () => Promise<number>): Promise<{ code: number; out: string }> {

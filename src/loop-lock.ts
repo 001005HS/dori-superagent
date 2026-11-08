@@ -37,8 +37,7 @@ const sameLock = (a: LockBody | "missing" | "corrupt", b: LockBody | "missing" |
  * moved aside with rename(2), which only one process can win; if what was moved is not the lock judged stale, it
  * is linked back and this process backs off.
  */
-export function acquire(d: Deps): { nonce: string } | { holder: string } {
-  const path = d.store.loopPath("lock");
+export function acquire(d: Deps, path: string = d.store.lockPath("loop")): { nonce: string } | { holder: string } {
   const nonce = randomUUID();
   const tmp = `${path}.${nonce}`;
   writeFileSync(tmp, JSON.stringify({ pid: process.pid, at: d.now(), nonce }));
@@ -73,12 +72,11 @@ export function acquire(d: Deps): { nonce: string } | { holder: string } {
 }
 
 export const holds = (d: Deps, nonce: string): boolean => {
-  const l = readLock(d.store.loopPath("lock"));
+  const l = readLock(d.store.lockPath("loop"));
   return typeof l !== "string" && l.nonce === nonce;
 };
 
-export function release(d: Deps, nonce: string): void {
-  const path = d.store.loopPath("lock");
+export function release(d: Deps, nonce: string, path: string = d.store.lockPath("loop")): void {
   const aside = `${path}.release.${nonce}`;
   try {
     renameSync(path, aside);

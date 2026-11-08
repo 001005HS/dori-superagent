@@ -4,12 +4,12 @@
 import { log } from "./backlog.ts";
 import { tellLead, type Deps } from "./harness.ts";
 import { startLane } from "./lanes.ts";
+import { audit, HOUR } from "./loop-audit.ts";
 import { acquire, holds, release } from "./loop-lock.ts";
-import type { Lane, LoopRun } from "./store-types.ts";
+import { refText } from "./refs.ts";
+import type { LoopRun } from "./store-types.ts";
 
-export const HOUR = 3_600_000;
-export const STALE_HOURS = 3;
-export const READY_HOURS = 2;
+export { HOUR };
 export const REMIND_HOURS = 6;
 export const MAX_ATTEMPTS = 2;
 export const MEM_FREE_MIN_PCT = 10;
@@ -17,7 +17,6 @@ export const MEM_FREE_MIN_PCT = 10;
 export type LoopOpts = { interval?: number; maxLanes?: number; maxStarts?: number; maxLoad?: number; force?: boolean };
 
 const PR_RE = /github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/;
-const hours = (ms: number): number => Math.floor(ms / HOUR);
 
 async function ghState(d: Deps, kind: "pr" | "issue", repo: string, n: string): Promise<string> {
   const r = await d.exec("gh", [kind, "view", n, "--repo", repo, "--json", "state"]);
@@ -61,38 +60,6 @@ async function sync(d: Deps, run: LoopRun): Promise<void> {
       }
     } catch (e) {
       run.findings.push(`gh: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
-}
-
-/** The last time the lane itself said something (start or report). Pane polling by the duty loop does not count. */
-const lastReport = (lane: Lane): number =>
-  Math.max(lane.createdAt, ...lane.log.filter((e) => e.kind === "start" || e.kind === "report").map((e) => e.at));
-
-async function audit(d: Deps, run: LoopRun): Promise<void> {
-  const now = d.now();
-  for (const lane of d.store.lanes()) {
-    if (lane.status !== "working" && lane.status !== "waiting" && lane.status !== "ready") continue;
-    let st: Awaited<ReturnType<Deps["herdr"]["status"]>>;
-    try {
-      st = await d.herdr.status(lane.paneId);
-    } catch (e) {
-      run.findings.push(`herdr: ${lane.key}: ${e instanceof Error ? e.message : String(e)}`);
-      continue;
-    }
-    if (st === "gone") {
-      run.findings.push(`${lane.key} pane ${lane.paneId} is gone`);
-    } else if (lane.status === "ready") {
-      const age = now - (lane.final?.at ?? lane.lastActivityAt);
-      if (age >= READY_HOURS * HOUR)
-        run.findings.push(`${lane.key} READY ${hours(age)}h ago, not closed: dori done ${lane.key}`);
-    } else if (now - lastReport(lane) >= STALE_HOURS * HOUR) {
-      const age = hours(now - lastReport(lane));
-      run.findings.push(
-        lane.status === "waiting"
-          ? `${lane.key} waiting ${age}h on: ${lane.log.at(-1)?.text.slice(0, 80) ?? "?"}`
-          : `${lane.key} working, no report for ${age}h`,
-      );
     }
   }
 }
@@ -146,7 +113,7 @@ async function pull(
         run.findings.push(`start ${item.id} failed: ${why}`);
         continue;
       }
-      run.findings.push(`${item.id} started in ${lane.paneId} but the lead was not told: ${why}`);
+      run.findings.push(`${item.id} started in ${refText(lane.sessionRef)} but the lead was not told: ${why}`);
     }
     item.status = "running";
     log(d, item, "start", "lane opened by the hourly loop");

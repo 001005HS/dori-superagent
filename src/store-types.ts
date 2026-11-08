@@ -1,7 +1,17 @@
+import type { SessionRef } from "./runtime/types.ts";
+
 export type LaneStatus = "working" | "waiting" | "ready" | "done" | "lost";
 
+/**
+ * One lane record. `sessionRef` is the session it runs in, on whichever runtime opened it; `paneId`/`tabId` are written
+ * beside it (the ref's id and container) so an older binary still reads the file. `migratedFrom`: the sessions it ran in
+ * before a `dori migrate`. `migration`: a handover is in progress, and the duty loop leaves the record alone.
+ */
 export type Lane = {
   key: string;
+  sessionRef: SessionRef;
+  migratedFrom?: SessionRef[];
+  migration?: true;
   paneId: string;
   tabId: string;
   brief: string;
@@ -14,7 +24,8 @@ export type Lane = {
   log: { at: number; kind: "start" | "report" | "ready" | "nudge" | "done" | "lost"; text: string }[];
 };
 
-export type Role = "lead" | "duty";
+/** The sessions `dori up` opens; roles.json maps each to a ref string (a bare herdr pane id, or `hc:t7`). */
+export type Role = "lead" | "duty" | "duty-loop" | "hourly-loop";
 
 /**
  * A delivery that failed after the message may have reached the pane (#89). `typed`: the text is in the pane's input
@@ -86,7 +97,7 @@ export type LoopRun = {
 export const KEEP_RUNS = 168;
 export const KEY_RE = /^[a-z][a-z0-9-]{1,40}$/;
 /** Role names are send targets, and resolveTarget tries roles first, so a lane with one of these keys could never be reached. */
-export const RESERVED_KEYS: readonly Role[] = ["lead", "duty"];
+export const RESERVED_KEYS: readonly Role[] = ["lead", "duty", "duty-loop", "hourly-loop"];
 /** Refusal text for a reserved lane key, or undefined. Keys are lowercase-only (KEY_RE), so the exact match is the whole check. */
 export const reservedKey = (key: string): string | undefined =>
   (RESERVED_KEYS as readonly string[]).includes(key) ? `lane key "${key}" is reserved for the ${key} role` : undefined;
