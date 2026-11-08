@@ -182,9 +182,22 @@ export type InboxEntry = {
 
 const PREVIEW_CHARS = 60;
 
+/** Where a session's inbox lives now (its `.forward` target, if it moved), with forwarded entries merged in unless a flush holds the lock. */
+export function currentInbox(d: Deps, from: SessionRef): SessionRef {
+  const ref = d.store.forwardOf(from) ?? from;
+  const release = d.store.forwardPending(ref) ? d.store.lockInbox(ref, d.now()) : undefined;
+  if (release)
+    try {
+      d.store.mergeForwarded(ref);
+    } finally {
+      release();
+    }
+  return ref;
+}
+
 /** A session's queued messages, 1-based in inbox order. The text is never shown whole: its first 60 characters, JSON-escaped. */
 export function inboxList(d: Deps, target: string): { paneId: string; entries: InboxEntry[] } {
-  const ref = resolveTarget(d, target);
+  const ref = currentInbox(d, resolveTarget(d, target));
   const entries = d.store.queued(ref).map(
     (m, i): InboxEntry => ({
       index: i + 1,
@@ -203,11 +216,13 @@ export function inboxList(d: Deps, target: string): { paneId: string; entries: I
  * the inbox lock, so a flush in progress cannot overwrite the change. Returns the session as refText.
  */
 export function releaseHeld(d: Deps, target: string, index: number, how: "ack" | "resend"): string {
-  const ref = resolveTarget(d, target);
+  const named = resolveTarget(d, target);
+  const ref = d.store.forwardOf(named) ?? named;
   const paneId = refText(ref);
   const release = d.store.lockInbox(ref, d.now());
   if (!release) throw new Refusal(`the inbox of ${paneId} is being flushed right now; try again`);
   try {
+    d.store.mergeForwarded(ref);
     const msgs = d.store.queued(ref);
     const m = Number.isInteger(index) ? msgs[index - 1] : undefined;
     if (!m)

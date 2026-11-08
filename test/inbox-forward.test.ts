@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { appendFileSync, existsSync, writeFileSync } from "node:fs";
 import { dutyTick } from "../src/duty.ts";
-import { flushInbox } from "../src/inbox.ts";
+import { flushInbox, inboxList, releaseHeld } from "../src/inbox.ts";
 import type { SessionRef } from "../src/runtime/types.ts";
 import { terminal } from "./fake-hc.ts";
 import { World, href } from "./fake.ts";
@@ -48,6 +48,52 @@ describe("a forwarded inbox (.forward marker)", () => {
     expect(await flushInbox(d, NEW)).toBe("queued");
     expect(d.store.queued(NEW).map((x) => x.text)).toEqual(["first", "second"]);
     expect(existsSync(`${old}.merging`)).toBe(false);
+  });
+
+  test("inbox list <old ref> shows the moved entries plus those still at the old path, merged once", () => {
+    const { d, old, oldWriter } = setup("working");
+    d.store.saveInbox(NEW, [m("moved", 1)]);
+    oldWriter(m("late", 2));
+    const listed = inboxList(d, "w1:p3");
+    expect(listed.paneId).toBe("hc:t7");
+    expect(listed.entries.map((e) => e.preview)).toEqual(['"moved"', '"late"']);
+    expect(d.store.queued(OLD)).toEqual([]);
+    expect(existsSync(`${old}.forward`)).toBe(true);
+    expect(inboxList(d, "w1:p3").entries).toHaveLength(2);
+  });
+
+  test("inbox ack and resend <old ref> <n> act on the moved held entries", () => {
+    const { d, oldWriter } = setup("working");
+    const held = { at: 3, state: "ambiguous" as const, detail: "timeout" };
+    d.store.saveInbox(NEW, [{ ...m("held-a", 1), attempt: held }]);
+    oldWriter({ ...m("held-b", 2), attempt: held } as ReturnType<typeof m>);
+    expect(releaseHeld(d, "w1:p3", 1, "ack")).toBe("hc:t7");
+    expect(d.store.queued(NEW).map((x) => x.text)).toEqual(["held-b"]);
+    expect(releaseHeld(d, "w1:p3", 1, "resend")).toBe("hc:t7");
+    expect(d.store.queued(NEW)).toEqual([m("held-b", 2)]);
+    expect(d.store.queued(OLD)).toEqual([]);
+  });
+
+  test("the duty pass counts kept and held entries where they live now, not at the old path", async () => {
+    const { w, d, oldWriter } = setup();
+    w.hc.terminals.set(
+      "t7",
+      terminal({ status: null, reported: false, foreground: { name: "-bash", argv: ["-bash"], pid: 7 } }),
+    );
+    d.store.saveInbox(NEW, [{ ...m("held", 1), attempt: { at: 3, state: "ambiguous", detail: "timeout" } }]);
+    oldWriter(m("waiting", 2));
+    const events = await dutyTick(d);
+    expect(events).toContainEqual({
+      pane: "w1:p3",
+      action: "inbox-held",
+      detail: "no agent in front; 2 message(s) kept",
+    });
+    expect(events).toContainEqual({
+      pane: "w1:p3",
+      action: "delivery-ambiguous",
+      detail: "1 message(s) held, not resent",
+    });
+    expect(w.hc.sent).toEqual([]);
   });
 
   test("the duty pass finds the old file and flushes it at the new ref", async () => {
