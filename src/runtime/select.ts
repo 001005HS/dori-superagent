@@ -58,8 +58,8 @@ function onPath(pathVar: string | undefined, exists: (path: string) => boolean):
 
 /**
  * Which runtime new sessions open on, and why. Precedence: `DORI_RUNTIME` > the config file's `runtime` key >
- * `HC_TERMINAL_ID` (inside an hc terminal) > `HERDR_PANE_ID` (inside a herdr pane) > the one runtime binary on PATH.
- * Both binaries or neither, with nothing else set, is refused: guessing would open sessions where nobody looks.
+ * `HC_TERMINAL_ID` (inside an hc terminal) > `HERDR_PANE_ID` (inside a herdr pane) > the runtime binaries on PATH: hc
+ * (herdr-core) when it is installed, else herdr. Neither binary, with nothing else set, is refused with the fix in one line.
  */
 export function readRuntimeChoice(options: {
   readonly env: Readonly<Record<string, string | undefined>>;
@@ -77,8 +77,9 @@ export function readRuntimeChoice(options: {
   if (nonEmpty(env["HC_TERMINAL_ID"]) !== undefined) return { kind: "hc", source: "detect:HC_TERMINAL_ID" };
   if (nonEmpty(env["HERDR_PANE_ID"]) !== undefined) return { kind: "herdr", source: "detect:HERDR_PANE_ID" };
   const found = onPath(env["PATH"], options.exists ?? isExecutableFile);
-  const [only] = found;
-  if (found.length === 1 && only !== undefined) return { kind: only, source: "detect:path" };
-  const why = found.length === 0 ? "neither herdr nor hc is on PATH" : "both herdr and hc are on PATH";
-  throw new RuntimeChoiceError(`${why}: set "runtime": "herdr" or "hc" in ${configPath}, or DORI_RUNTIME`);
+  if (found.includes("hc")) return { kind: "hc", source: "detect:path" };
+  if (found.includes("herdr")) return { kind: "herdr", source: "detect:path" };
+  throw new RuntimeChoiceError(
+    `neither herdr nor hc is on PATH: install hc (herdr-core) or herdr, or set "runtime": "herdr" or "hc" in ${configPath}, or DORI_RUNTIME`,
+  );
 }
