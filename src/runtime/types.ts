@@ -66,26 +66,22 @@ export interface SessionRuntime {
   close(ref: SessionRef, scope?: CloseScope): Promise<void>;
 }
 
-/** Id shape of each kind: a pane `w<ws>:p<pane>` for the first, a terminal address `t<n>` for the second. */
-const ID_SHAPES: Readonly<Record<RuntimeKind, RegExp>> = {
-  herdr: /^w[0-9A-Za-z]+:p[0-9A-Za-z]+$/,
-  hc: /^t[0-9]+$/,
-};
+/** Id shape of a bare ref: only a herdr pane `w<ws>:p<pane>` may appear without its prefix. */
+const BARE_HERDR = /^w[0-9A-Za-z]+:p[0-9A-Za-z]+$/;
+/** Id shape after each prefix: a herdr pane, or an hc terminal address `t<n>`. */
+const ID_SHAPES: Readonly<Record<RuntimeKind, RegExp>> = { herdr: BARE_HERDR, hc: /^t[0-9]+$/ };
 const KINDS = Object.keys(ID_SHAPES) as RuntimeKind[];
-
-const refOf = (runtime: RuntimeKind, id: string): SessionRef | undefined => (ID_SHAPES[runtime].test(id) ? { runtime, id } : undefined);
 
 /** "herdr:w1:p3", "hc:t7", bare "w1:p3" (herdr). A bare "t7" is NOT a ref (it is a legal lane key); undefined otherwise. */
 export const parseRef: (text: string) => SessionRef | undefined = (text) => {
-  for (const kind of KINDS) {
-    if (text.startsWith(`${kind}:`)) return refOf(kind, text.slice(kind.length + 1));
+  for (const runtime of KINDS) {
+    if (!text.startsWith(`${runtime}:`)) continue;
+    const id = text.slice(runtime.length + 1);
+    return ID_SHAPES[runtime].test(id) ? { runtime, id } : undefined;
   }
-  return refOf("herdr", text);
+  return BARE_HERDR.test(text) ? { runtime: "herdr", id: text } : undefined;
 };
-
-/** The prefixed text form, `"herdr:w1:p3"` / `"hc:t7"`; group and container are not part of it. */
 export const formatRef: (ref: SessionRef) => string = (ref) => `${ref.runtime}:${ref.id}`;
-
 /** create + start in one call (the root harness path). */
 export const openSession: (rt: SessionRuntime, spec: CreateSpec, command: string) => Promise<SessionRef> = async (rt, spec, command) => {
   const ref = await rt.create(spec);

@@ -6,8 +6,8 @@ import { spawnExec, ToolError } from "../src/runtime/exec.ts";
 import { interactiveShellInFront, SHELLS } from "../src/runtime/foreground.ts";
 import { groupId } from "../src/runtime/group.ts";
 import { Runtimes } from "../src/runtime/registry.ts";
-import type { ForegroundProcess, RuntimeKind, SessionRef, SessionRuntime } from "../src/runtime/types.ts";
-import { formatRef, parseRef } from "../src/runtime/types.ts";
+import type { CreateSpec, ForegroundProcess, RuntimeKind, SessionRef, SessionRuntime } from "../src/runtime/types.ts";
+import { formatRef, openSession, parseRef } from "../src/runtime/types.ts";
 
 describe("parseRef / formatRef", () => {
   test.each([
@@ -16,6 +16,7 @@ describe("parseRef / formatRef", () => {
     ["w1:p3", { runtime: "herdr", id: "w1:p3" }],
     ["wAb:pX9", { runtime: "herdr", id: "wAb:pX9" }],
     ["t7", undefined],
+    ["hc:t12", { runtime: "hc", id: "t12" }],
     ["t", undefined],
     ["", undefined],
     ["lead", undefined],
@@ -33,6 +34,7 @@ describe("parseRef / formatRef", () => {
     ["herdr:w1:p3", { runtime: "herdr", id: "w1:p3" }],
     ["hc:t7", { runtime: "hc", id: "t7" }],
     ["hc:t7 (group dropped)", { runtime: "hc", id: "t7", group: "abcd1234" }],
+    ["herdr:w1:p3 (group and container dropped)", { runtime: "herdr", id: "w1:p3", group: "w1", container: "w1:t2" }],
   ] as const)("formatRef gives %s and parses back", (want, ref) => {
     expect(formatRef(ref)).toBe(want.split(" ")[0] ?? "");
     expect(parseRef(formatRef(ref))).toEqual({ runtime: ref.runtime, id: ref.id });
@@ -131,6 +133,66 @@ describe("Runtimes registry", () => {
     expect(runtimes.for({ runtime: "hc", id: "t7" })).toBe(runtimes.default);
     expect(runtimes.for(herdrRef)).toBe(runtimes.for(herdrRef));
     expect(made).toEqual(["herdr", "hc"]);
+  });
+});
+
+describe("Runtimes.kinds and selfAny", () => {
+  const make = () => new Runtimes("herdr", (k) => ({ kind: k }) as unknown as SessionRuntime);
+
+  test("kinds lists the runtimes built so far, in first-use order", () => {
+    const runtimes = make();
+    expect(runtimes.kinds()).toEqual([]);
+    runtimes.for({ runtime: "hc", id: "t1" });
+    runtimes.default;
+    runtimes.for({ runtime: "hc", id: "t2" });
+    expect(runtimes.kinds()).toEqual(["hc", "herdr"]);
+  });
+
+  test.each([
+    ["an hc terminal", { HC_TERMINAL_ID: "t7" }, { runtime: "hc", id: "t7" }],
+    ["hc wins when both are set", { HC_TERMINAL_ID: "t7", HERDR_PANE_ID: "w1:p3", HERDR_WORKSPACE_ID: "w1" }, { runtime: "hc", id: "t7" }],
+    ["a herdr pane grouped by its workspace", { HERDR_PANE_ID: "w1:p3", HERDR_WORKSPACE_ID: "w1" }, { runtime: "herdr", id: "w1:p3", group: "w1" }],
+    ["a herdr pane without a workspace id has no group", { HERDR_PANE_ID: "w1:p3" }, { runtime: "herdr", id: "w1:p3" }],
+    ["empty variables are unset", { HC_TERMINAL_ID: "", HERDR_PANE_ID: "w2:p1", HERDR_WORKSPACE_ID: "" }, { runtime: "herdr", id: "w2:p1" }],
+    ["outside any runtime", {}, undefined],
+  ] as const)("selfAny: %s", (_, env, want) => {
+    const runtimes = make();
+    expect(runtimes.selfAny(env)).toEqual(want);
+    expect(runtimes.kinds()).toEqual([]);
+  });
+});
+
+describe("openSession", () => {
+  test("creates the session, then starts the command in it, and returns the created ref", async () => {
+    const calls: string[] = [];
+    const ref: SessionRef = { runtime: "hc", id: "t9", group: "g" };
+    const rt = {
+      kind: "hc",
+      create: async (spec: CreateSpec) => {
+        calls.push(`create ${spec.name} ${spec.container}`);
+        return ref;
+      },
+      start: async (r: SessionRef, command: string) => {
+        calls.push(`start ${formatRef(r)} ${command}`);
+      },
+    } as unknown as SessionRuntime;
+    const spec: CreateSpec = { name: "lane-a", cwd: "/w", env: {}, role: "lane", container: "tab" };
+    expect(await openSession(rt, spec, "omo")).toBe(ref);
+    expect(calls).toEqual(["create lane-a tab", "start hc:t9 omo"]);
+  });
+
+  test("a failed create starts nothing", async () => {
+    let started = false;
+    const rt = {
+      create: async () => {
+        throw new Error("no space");
+      },
+      start: async () => {
+        started = true;
+      },
+    } as unknown as SessionRuntime;
+    await expect(openSession(rt, { name: "x", cwd: "/", env: {}, role: "lead", container: "workspace-root" }, "omo")).rejects.toThrow("no space");
+    expect(started).toBe(false);
   });
 });
 
