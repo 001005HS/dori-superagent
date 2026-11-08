@@ -6,7 +6,11 @@ export type Exec = (cmd: string, argv: readonly string[]) => Promise<ExecResult>
 
 export const spawnExec: Exec = async (cmd, argv) => {
   const proc = Bun.spawn([cmd, ...argv], { stdout: "pipe", stderr: "pipe", stdin: "ignore" });
-  const [stdout, stderr, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
   return { code, stdout, stderr };
 };
 

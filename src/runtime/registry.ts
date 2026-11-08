@@ -1,6 +1,7 @@
 import type { RuntimeKind, SessionRef, SessionRuntime } from "./types.ts";
 
-const nonEmpty = (value: string | undefined): string | undefined => (value === undefined || value === "" ? undefined : value);
+const nonEmpty = (value: string | undefined): string | undefined =>
+  value === undefined || value === "" ? undefined : value;
 
 /**
  * The runtimes one process talks to: `default` is the selected kind (where new sessions open), `for(ref)` is the
