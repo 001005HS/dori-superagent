@@ -255,6 +255,10 @@ Neither suite needs a model or the network: the harness runs against a fake herd
 
 `dori` sends anonymous usage counts the way omo does: OTLP/HTTP JSON to `https://t.omo.dev`, with a random install id kept in `~/.dori/telemetry.json` and only its sha256 sent. What leaves the machine is counts and fixed enums: installed, daily active, lane started, lane ready, review completed, merge decided, and one hourly duty summary. Never sent: paths, repo names, PR numbers, lane keys, briefs, messages or any other text. Turn it off with `DORI_TELEMETRY=0` (`DO_NOT_TRACK=1` also works), and point it elsewhere with `DORI_TELEMETRY_ENDPOINT`. Telemetry never makes a command fail.
 
+## Contributing
+
+Every contributor signs the [Contributor License Agreement](CLA.md) once, before a pull request of theirs is reviewed or merged, by commenting `I have read the CLA Document and I hereby sign the CLA`. The gates, the test commands and the pull request rules are in [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## License
 
-MIT, see [LICENSE](LICENSE). The prompts in `prompts/` are the instructions the agents actually receive, and they are short enough to read before you trust them.
+The project is licensed under the [Sustainable Use License](LICENSE) version 1.0, with third-party components under their own licenses. It covers your own internal business use and non-commercial or personal use; commercial use needs a license from the owner. Commits before `ba96abf` keep the MIT license they shipped with, and the change applies from that commit on. The prompts in `prompts/` are the instructions the agents actually receive, and they are short enough to read before you trust them.

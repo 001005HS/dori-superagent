@@ -255,6 +255,10 @@ Keine der beiden Suiten braucht ein Modell oder das Netz: das Harness läuft geg
 
 `dori` sendet anonyme Nutzungszahlen so wie omo: OTLP/HTTP-JSON an `https://t.omo.dev`, mit einer zufälligen Installations-ID in `~/.dori/telemetry.json`, von der nur der sha256 rausgeht. Was die Maschine verlässt, sind Zählungen und feste Enums: installiert, täglich aktiv, lane gestartet, lane ready, Review abgeschlossen, Merge entschieden und eine stündliche duty-Zusammenfassung. Nie gesendet: Pfade, Repository-Namen, PR-Nummern, lane-Keys, briefs, Nachrichten oder sonstiger Text. Abschalten mit `DORI_TELEMETRY=0` (`DO_NOT_TRACK=1` wirkt auch), umleiten mit `DORI_TELEMETRY_ENDPOINT`. Telemetrie lässt nie einen Befehl scheitern.
 
+## Mitmachen
+
+Wer beiträgt, unterzeichnet einmal die [Contributor License Agreement](CLA.md), bevor ein Pull Request geprüft oder gemergt wird, mit einem Kommentar im Pull Request: `I have read the CLA Document and I hereby sign the CLA`. Gates, Testbefehle und die Regeln für Pull Requests stehen in [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Lizenz
 
-MIT, siehe [LICENSE](LICENSE). Die Prompts in `prompts/` sind die Anweisungen, die die Agenten wirklich bekommen, und sie sind kurz genug, um sie vor dem Vertrauen zu lesen.
+Das Projekt steht unter der [Sustainable Use License](LICENSE) in Version 1.0, Drittanbieter-Komponenten unter ihren eigenen Lizenzen. Sie deckt die interne Nutzung im eigenen Geschäftsbetrieb sowie nicht-kommerzielle oder persönliche Nutzung ab. Kommerzielle Nutzung braucht eine Lizenz vom Inhaber. Commits vor `ba96abf` behalten die MIT-Lizenz, unter der sie erschienen sind; die Änderung gilt ab diesem Commit. Die Prompts in `prompts/` sind die Anweisungen, die die Agenten wirklich bekommen, und sie sind kurz genug, um sie vor dem Vertrauen zu lesen.

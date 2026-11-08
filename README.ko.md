@@ -255,6 +255,10 @@ bun run ci          # Biome, tsc, knip, 250줄 래칫, 그다음 두 스위트
 
 `dori`는 omo와 같은 방식으로 익명 사용량을 보냅니다. `https://t.omo.dev`로 OTLP/HTTP JSON을 보내고, `~/.dori/telemetry.json`에 둔 무작위 설치 id의 sha256만 내보냅니다. 기계를 떠나는 것은 개수와 고정된 enum입니다. 설치, 일간 활성, 레인 시작, 레인 ready, 리뷰 완료, 머지 판정, 한 시간에 한 번의 듀티 요약입니다. 경로, 저장소 이름, PR 번호, 레인 키, 브리프, 메시지나 그 밖의 텍스트는 보내지 않습니다. `DORI_TELEMETRY=0`으로 끄고(`DO_NOT_TRACK=1`도 됩니다), `DORI_TELEMETRY_ENDPOINT`로 보낼 곳을 바꿉니다. 텔레메트리 때문에 명령이 실패하는 일은 없습니다.
 
+## 기여
+
+기여자는 리뷰나 머지 전에 [기여자 라이선스 계약](CLA.md)에 한 번 서명합니다. 풀 리퀘스트에 `I have read the CLA Document and I hereby sign the CLA` 라고 댓글을 남기면 됩니다. 게이트, 테스트 명령, 풀 리퀘스트 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md)에 있습니다.
+
 ## 라이선스
 
-MIT입니다. [LICENSE](LICENSE)를 보십시오. `prompts/`의 프롬프트는 에이전트가 실제로 받는 지시이고, 믿기 전에 다 읽을 수 있을 만큼 짧습니다.
+이 프로젝트는 [Sustainable Use License](LICENSE) 1.0으로 제공되고, 서드파티 구성 요소는 각자의 라이선스를 따릅니다. 자기 사업의 내부 사용과 비상업적 사용이나 개인적 사용을 덮습니다. 상업적 사용에는 소유자의 라이선스가 필요합니다. `ba96abf` 이전 커밋은 배포 당시의 MIT 라이선스를 유지하고, 이 변경은 그 커밋부터 적용됩니다. `prompts/`의 프롬프트는 에이전트가 실제로 받는 지시이고, 믿기 전에 다 읽을 수 있을 만큼 짧습니다.

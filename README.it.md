@@ -255,6 +255,10 @@ Nessuna delle due suite richiede un modello o la rete: l'harness gira contro un 
 
 `dori` invia conteggi anonimi d'uso come fa omo: OTLP/HTTP JSON a `https://t.omo.dev`, con un id di installazione casuale in `~/.dori/telemetry.json` e solo il suo sha256 in uscita. Quello che lascia la macchina sono conteggi ed enum fissi: installato, attivo giornaliero, lane avviata, lane ready, review completata, merge deciso e un riepilogo duty ogni ora. Mai inviati: percorsi, nomi di repository, numeri di PR, chiavi di lane, brief, messaggi o altro testo. Si disattiva con `DORI_TELEMETRY=0` (funziona anche `DO_NOT_TRACK=1`) e si redirige con `DORI_TELEMETRY_ENDPOINT`. La telemetria non fa mai fallire un comando.
 
+## Contribuire
+
+Chi contribuisce firma una volta il [Contributor License Agreement](CLA.md), prima che una sua pull request venga revisionata o mergiata, commentando nella pull request: `I have read the CLA Document and I hereby sign the CLA`. I gate, i comandi di test e le regole per le pull request sono in [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Licenza
 
-MIT, vedi [LICENSE](LICENSE). I prompt in `prompts/` sono le istruzioni che gli agent ricevono davvero, e sono abbastanza brevi da leggerle prima di fidarti.
+Il progetto è distribuito con la [Sustainable Use License](LICENSE) versione 1.0, con i componenti di terze parti sotto le rispettive licenze. Copre l'uso interno nella propria attività e l'uso non commerciale o personale. L'uso commerciale richiede una licenza dal titolare. I commit precedenti a `ba96abf` mantengono la licenza MIT con cui sono stati pubblicati, e il cambiamento vale da quel commit in poi. I prompt in `prompts/` sono le istruzioni che gli agent ricevono davvero, e sono abbastanza brevi da leggerle prima di fidarti.

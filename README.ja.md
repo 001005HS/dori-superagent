@@ -255,6 +255,10 @@ bun run ci          # Biome、tsc、knip、250 行のラチェット、そのあ
 
 `dori` は omo と同じやり方で匿名の利用数を送ります。`https://t.omo.dev` への OTLP/HTTP JSON で、`~/.dori/telemetry.json` に置いたランダムなインストール id の sha256 だけを送ります。外に出るのは数と固定の enum です。インストール、日次アクティブ、lane 開始、lane ready、レビュー完了、マージ判定、そして一時間に一度の duty サマリーです。パス、リポジトリ名、PR 番号、lane キー、brief、メッセージその他のテキストは送りません。`DORI_TELEMETRY=0` で止まり（`DO_NOT_TRACK=1` も効きます）、`DORI_TELEMETRY_ENDPOINT` で送り先を変えられます。テレメトリーがコマンドを失敗させることはありません。
 
+## コントリビュート
+
+コントリビューターは、レビューやマージの前に[コントリビューターライセンス契約](CLA.md)へ一度署名します。プルリクエストに `I have read the CLA Document and I hereby sign the CLA` とコメントしてください。ゲート、テストコマンド、プルリクエストの規則は [CONTRIBUTING.md](CONTRIBUTING.md) にあります。
+
 ## ライセンス
 
-MIT です。[LICENSE](LICENSE) を参照してください。`prompts/` にあるプロンプトはエージェントが実際に受け取る指示そのもので、信じる前に読み切れる長さしかありません。
+このプロジェクトは [Sustainable Use License](LICENSE) 1.0 で提供され、サードパーティの構成要素はそれぞれのライセンスに従います。自分の業務での内部利用と、非営利または個人での利用を対象とします。商用利用には所有者のライセンスが必要です。`ba96abf` より前のコミットは公開時の MIT ライセンスのままで、この変更はそのコミットから適用されます。`prompts/` にあるプロンプトはエージェントが実際に受け取る指示そのもので、信じる前に読み切れる長さしかありません。

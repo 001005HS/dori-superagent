@@ -255,6 +255,10 @@ bun run ci          # Biome、tsc、knip、250 行棘轮，然后是两个测试
 
 `dori` 用和 omo 一样的方式发送匿名使用计数：OTLP/HTTP JSON 发到 `https://t.omo.dev`，安装 id 随机生成并存在 `~/.dori/telemetry.json`，只发送它的 sha256。离开机器的只有计数和固定枚举：安装、日活、lane 开始、lane ready、评审完成、合并判定，以及每小时一次的 duty 汇总。从不发送：路径、仓库名、PR 号、lane key、brief、消息或其他任何文本。用 `DORI_TELEMETRY=0` 关闭（`DO_NOT_TRACK=1` 也可以），用 `DORI_TELEMETRY_ENDPOINT` 改投别处。遥测从不会让命令失败。
 
+## 参与贡献
+
+贡献者在评审或合并之前先签署一次[贡献者许可协议](CLA.md)：在自己的 pull request 下评论 `I have read the CLA Document and I hereby sign the CLA`。门禁、测试命令和 pull request 规则见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
 ## 许可
 
-MIT，见 [LICENSE](LICENSE)。`prompts/` 里的提示词就是 Agent 实际收到的指令，短到可以在信任它们之前先读完。
+本项目以 [Sustainable Use License](LICENSE) 1.0 提供，第三方组件遵循各自的许可。它覆盖你自己业务的内部使用，以及非商业或个人使用；商业使用需要获得所有者的许可。`ba96abf` 之前的提交保留它们发布时的 MIT 许可，本变更从该提交起生效。`prompts/` 里的提示词就是 Agent 实际收到的指令，短到可以在信任它们之前先读完。
