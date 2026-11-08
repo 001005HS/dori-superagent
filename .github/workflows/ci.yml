@@ -49,7 +49,12 @@ jobs:
       - name: Install herdr 0.9.5
         run: |
           mkdir -p "$HOME/.local/bin"
-          curl -fsSL -o "$HOME/.local/bin/herdr" https://github.com/herdrdev/herdr/releases/download/v0.9.5/herdr-linux-x86_64
+          # GitHub's release-asset path answers 5xx now and then: three tries with a backoff, then the step fails.
+          for attempt in 1 2 3; do
+            curl -fsSL --retry 0 -o "$HOME/.local/bin/herdr" https://github.com/herdrdev/herdr/releases/download/v0.9.5/herdr-linux-x86_64 && break
+            [ "$attempt" = 3 ] && exit 22
+            sleep $((attempt * 20))
+          done
           echo "14d9e8bc8b4a9e0118d77c32266f76d461f09b40342eb23752960bd89f59929d  $HOME/.local/bin/herdr" | sha256sum -c -
           chmod +x "$HOME/.local/bin/herdr"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
