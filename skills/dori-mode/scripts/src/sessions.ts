@@ -16,8 +16,13 @@ export const listSessions = async (
   rts: Runtimes,
   options: { readonly group?: string; readonly lanes?: readonly { readonly sessionRef?: SessionRef }[] } = {},
 ): Promise<SessionInfo[]> => {
-  void rts.default;
   for (const lane of options.lanes ?? []) if (lane.sessionRef) rts.for(lane.sessionRef);
+  // The selected kind is read last: a failed choice still lists every stored lane, and fails only when nothing else is.
+  try {
+    void rts.default;
+  } catch (e) {
+    if (rts.kinds().length === 0) throw e;
+  }
   const out: SessionInfo[] = [];
   for (const kind of rts.kinds()) {
     const rt = rts.for({ runtime: kind, id: "" });

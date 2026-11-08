@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { Refusal, resolveTarget } from "../src/harness.ts";
+import { resolveTarget } from "../src/target.ts";
+import { Refusal } from "../src/refusal.ts";
 import type { SessionRef } from "../src/runtime/types.ts";
 import type { Lane } from "../src/store-types.ts";
 import { World } from "./fake.ts";

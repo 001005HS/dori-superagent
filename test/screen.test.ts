@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { send } from "../src/harness.ts";
+import { send } from "../src/inbox.ts";
 import { World, href } from "./fake.ts";
 
 // Real omo screens captured with `herdr pane read --source recent`, sanitized (titles, costs, ids, paths replaced).

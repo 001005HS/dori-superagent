@@ -152,3 +152,12 @@ test("a mixed registry lists the herdr lane and the hc lane together, whichever 
   expect((await listSessions(runtimesOf(at(T0)))).map((s) => s.ref.id)).toEqual(["w:p1"]);
   expect(world.calls.some((c) => c[0] === "hc")).toBe(false);
 });
+
+test("a failed runtime choice still lists a stored herdr lane; with no lane the failure is thrown", async () => {
+  world.panes = [{ pane_id: "w:p1", workspace_id: "w", agent: "pi", agent_status: "idle" }];
+  const deps = { ...at(T0), env: { DORI_RUNTIME: "tmux" } };
+  const listed = await listSessions(runtimesOf(deps), { lanes: [{ sessionRef: P1 }] });
+  expect(listed.map((s) => `${s.ref.runtime}:${s.ref.id}`)).toEqual(["herdr:w:p1"]);
+  expect(world.calls.some((c) => c[0] === "hc")).toBe(false);
+  await expect(listSessions(runtimesOf({ ...at(T0), env: { DORI_RUNTIME: "tmux" } }))).rejects.toThrow();
+});

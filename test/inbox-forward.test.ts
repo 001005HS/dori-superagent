@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { appendFileSync, existsSync, writeFileSync } from "node:fs";
 import { dutyTick } from "../src/duty.ts";
-import { flushInbox, inboxList, releaseHeld } from "../src/inbox.ts";
+import { flushInbox } from "../src/inbox.ts";
+import { inboxList, releaseHeld } from "../src/inbox-held.ts";
 import type { SessionRef } from "../src/runtime/types.ts";
 import { terminal } from "./fake-hc.ts";
 import { World, href } from "./fake.ts";

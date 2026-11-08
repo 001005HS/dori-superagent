@@ -1,22 +1,14 @@
-import { DeliveryUncertain } from "./delivery.ts";
-import { prompt, Refusal, sendOrThrow, tellLead, type Deps } from "./harness.ts";
+import { DeliveryUncertain, failureDetail } from "./delivery.ts";
+import { type Deps, prompt } from "./harness.ts";
 import { runHook } from "./hooks.ts";
-import { flushInbox } from "./inbox.ts";
+import { flushInbox, sendOrThrow, tellLead } from "./inbox.ts";
+import { Refusal } from "./refusal.ts";
 import { refText } from "./refs.ts";
-import { ToolError } from "./runtime/exec.ts";
 import type { Lane } from "./store-types.ts";
 
 export const NUDGE_MINUTES = [10, 20, 40] as const;
 
 export type DutyEvent = { lane?: string; pane?: string; action: string; detail?: string };
-
-/** A short one-line reason. A ToolError message carries the whole argv (the queued text), so use the tool's own output. */
-export function failureDetail(e: unknown): string {
-  if (e instanceof DeliveryUncertain) e = e.failure;
-  const raw = e instanceof ToolError ? e.result.stderr || e.result.stdout : e instanceof Error ? e.message : String(e);
-  const first = raw.trim().split("\n")[0] ?? "";
-  return first.length > 200 ? `${first.slice(0, 200)}...` : first;
-}
 
 /** An open lane the duty loop watches; a lane being migrated is left alone (no nudge, no lost, no activity stamp). */
 const watched = (lane: Lane): boolean =>

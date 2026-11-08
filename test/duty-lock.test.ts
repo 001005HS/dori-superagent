@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { main } from "../src/cli.ts";
-import { Refusal } from "../src/harness.ts";
+import { Refusal } from "../src/refusal.ts";
 import { acquire, release } from "../src/loop-lock.ts";
 import { World } from "./fake.ts";
 import { captureIo } from "./inbox-setup.ts";

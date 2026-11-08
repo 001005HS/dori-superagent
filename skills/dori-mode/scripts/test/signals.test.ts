@@ -7,7 +7,8 @@ import { adoptLane, LaunchError } from "../src/launch.ts";
 import type { Http } from "../src/messenger/http.ts";
 import { statusOf } from "../src/registry.ts";
 import { run } from "../src/run.ts";
-import { checkDone, checkSignal, doneSyntaxErrors, splitDone } from "../src/signals.ts";
+import { checkDone, checkSignal, doneSyntaxErrors } from "../src/signals.ts";
+import { splitDone } from "../src/signals-parse.ts";
 import { depsFor, fakeClock, newWorld, withState } from "./fakes.ts";
 
 const state = withState();

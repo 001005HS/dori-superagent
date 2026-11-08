@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { dutyTick } from "../src/duty.ts";
-import { Refusal, send } from "../src/harness.ts";
+import { Refusal } from "../src/refusal.ts";
+import { send } from "../src/inbox.ts";
 import { parseRef, type RuntimeKind } from "../src/runtime/types.ts";
 import { terminal } from "./fake-hc.ts";
 import { World } from "./fake.ts";

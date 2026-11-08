@@ -2,7 +2,8 @@
 // that needs no decision, ask the lead the open questions, and record the run. It never merges,
 // never pushes, never closes a pane and never edits a lane record. See docs/hourly-loop.md.
 import { log } from "./backlog.ts";
-import { tellLead, type Deps } from "./harness.ts";
+import type { Deps } from "./harness.ts";
+import { tellLead } from "./inbox.ts";
 import { startLane } from "./lanes.ts";
 import { audit, HOUR } from "./loop-audit.ts";
 import { acquire, holds, release } from "./loop-lock.ts";

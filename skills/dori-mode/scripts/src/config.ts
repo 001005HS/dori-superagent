@@ -2,8 +2,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import type { RuntimeKind } from "../../../../src/runtime/types.ts";
-import type { SupervisionOptions } from "./supervision.ts";
-import type { CommitIdentity } from "./verify-pr.ts";
+import type { SupervisionOptions } from "./supervision-observe.ts";
+import type { CommitIdentity } from "./verify-pr-check.ts";
 
 export type ArgvTemplate = readonly string[];
 

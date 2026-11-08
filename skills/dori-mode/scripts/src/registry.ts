@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { HerdrRuntime } from "../../../../src/runtime/herdr/index.ts";
 import type { SessionRef } from "../../../../src/runtime/types.ts";
-import type { BudgetLimits } from "./supervision.ts";
+import type { BudgetLimits } from "./supervision-observe.ts";
 
 export const LANE_KEY = /^[a-z0-9][a-z0-9._-]{1,60}$/;
 /**
