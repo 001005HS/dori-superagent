@@ -10,8 +10,13 @@ import { depsFor, fakeClock, newWorld, withState } from "./fakes.ts";
 const T0 = Date.parse("2026-01-01T12:00:00Z");
 const MIN = 60_000;
 const lane: Lane = {
-  key: "report-lane", title: "reports", thread: "chat:team/1", pane: "w:p7",
-  brief: "/b.md", done: "file /done.md", openedAt: new Date(T0).toISOString(),
+  key: "report-lane",
+  title: "reports",
+  thread: "chat:team/1",
+  pane: "w:p7",
+  brief: "/b.md",
+  done: "file /done.md",
+  openedAt: new Date(T0).toISOString(),
   reportProtocol: "jsonl-v1",
 };
 let state: ReturnType<typeof withState>;
@@ -28,8 +33,12 @@ test("report transitions survive restarting the reader without changing done pro
   await deps.registry.write(lane);
   // When each report kind is appended in order.
   for (const [kind, expected] of [
-    ["milestone", "running"], ["blocker", "blocked"], ["milestone", "running"],
-    ["halted", "halted"], ["milestone", "running"], ["done", "done"],
+    ["milestone", "running"],
+    ["blocker", "blocked"],
+    ["milestone", "running"],
+    ["halted", "halted"],
+    ["milestone", "running"],
+    ["done", "done"],
   ] as const) {
     reports.report(lane.key, kind, `state ${expected}`, T0);
     // Then fresh readers recover the persisted state, not a memory cache.
@@ -95,7 +104,10 @@ test("one corrupt journal is reported once and does not stop the sweep for other
   // When freshness runs twice.
   const first = await freshnessTick(deps, "/home/test");
   // Then the healthy lane is still nudged, and the error is printed once with its line number.
-  expect(first.map((act) => `${act.kind} ${act.lane}`).sort()).toEqual(["journal-error bad-lane", `nudged ${lane.key}`]);
+  expect(first.map((act) => `${act.kind} ${act.lane}`).sort()).toEqual([
+    "journal-error bad-lane",
+    `nudged ${lane.key}`,
+  ]);
   expect(first.find((act) => act.kind === "journal-error")?.detail).toContain("reports.jsonl:2:");
   expect((await freshnessTick(deps, "/home/test")).map((act) => act.kind)).toEqual([]);
 });
@@ -115,9 +127,13 @@ test("a compaction error left above a later Working line does not keep the lane 
   reports.report(lane.key, "milestone", "started", T0);
   expect(reports.observe(lane.key, "Error: compaction failed\n❯ ", T0 + MIN, 15 * MIN)?.state).toBe("stalled");
   // When it recovers while the old error is still on screen; then Working below it wins.
-  expect(reports.observe(lane.key, "Error: compaction failed\n❯ retry\nWorking (3s)\n❯ ", T0 + 2 * MIN, 15 * MIN)?.state).toBe("running");
+  expect(
+    reports.observe(lane.key, "Error: compaction failed\n❯ retry\nWorking (3s)\n❯ ", T0 + 2 * MIN, 15 * MIN)?.state,
+  ).toBe("running");
   // And a new failure below the Working line stalls it again.
-  expect(reports.observe(lane.key, "Working (3s)\nauto-compaction failed\n❯ ", T0 + 3 * MIN, 15 * MIN)?.state).toBe("stalled");
+  expect(reports.observe(lane.key, "Working (3s)\nauto-compaction failed\n❯ ", T0 + 3 * MIN, 15 * MIN)?.state).toBe(
+    "stalled",
+  );
 });
 
 test("only a stale idle prompt stalls and repeated observations do not grow the log", () => {
@@ -180,19 +196,22 @@ test("a stalled structured lane alerts once even without a thread hook", async (
   expect(world.calls.some((call) => call[2] === "send-text")).toBe(false);
 });
 
-test.each(["blocker", "halted", "done", "question"] as const)("a %s report still reaches the thread, but the lane is not nudged", async (kind) => {
-  // Given a lane that declared %s and then stayed silent past both thresholds.
-  const world = newWorld();
-  const deps = depsFor(world, fakeClock(T0 + 30 * MIN), state.dir, {
-    hooks: { threadReply: ["notify", "{thread}", "{text}"] },
-  });
-  await deps.registry.write(lane);
-  reports.report(lane.key, kind, "needs the owner", T0);
-  // When freshness runs; then the report is posted and nothing is sent to the pane.
-  expect((await freshnessTick(deps, "/home/test")).map((act) => act.kind)).toEqual(["posted"]);
-  expect(world.calls.find((call) => call[0] === "notify")?.[2]).toContain("needs the owner");
-  expect(world.calls.some((call) => call[2] === "send-text")).toBe(false);
-});
+test.each(["blocker", "halted", "done", "question"] as const)(
+  "a %s report still reaches the thread, but the lane is not nudged",
+  async (kind) => {
+    // Given a lane that declared %s and then stayed silent past both thresholds.
+    const world = newWorld();
+    const deps = depsFor(world, fakeClock(T0 + 30 * MIN), state.dir, {
+      hooks: { threadReply: ["notify", "{thread}", "{text}"] },
+    });
+    await deps.registry.write(lane);
+    reports.report(lane.key, kind, "needs the owner", T0);
+    // When freshness runs; then the report is posted and nothing is sent to the pane.
+    expect((await freshnessTick(deps, "/home/test")).map((act) => act.kind)).toEqual(["posted"]);
+    expect(world.calls.find((call) => call[0] === "notify")?.[2]).toContain("needs the owner");
+    expect(world.calls.some((call) => call[2] === "send-text")).toBe(false);
+  },
+);
 
 test("a lane that reports every 10 minutes still gets its latest report posted, at most once per postAfterMin", async () => {
   // Given a lane whose reports keep the nudge clock fresh while its thread stays quiet.
@@ -268,7 +287,10 @@ test("the lane journal directory is private (0700), like the 0600 journal", () =
     reports.report("private-lane", "milestone", "first", T0);
     expect(statSync(join(state.dir, "lanes", "private-lane")).mode & 0o777).toBe(0o700);
     expect(statSync(reports.path("private-lane")).mode & 0o777).toBe(0o600);
-  } finally { process.umask(umask); state.done(); }
+  } finally {
+    process.umask(umask);
+    state.done();
+  }
 });
 
 test("a lane directory created earlier with wider permissions is made 0700 on the next report", () => {

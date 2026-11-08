@@ -27,7 +27,10 @@ test("a missing config file falls back to defaults and DORI_STATE_DIR wins over 
 
 test("repoIdentities keys are matched as lowercase owner/repo, whatever case the file uses", async () => {
   const path = join(state.dir, "config.json");
-  await Bun.write(path, JSON.stringify({ repoIdentities: { "Acme/App": { name: "Example Dev", email: "dev@example.com" } } }));
+  await Bun.write(
+    path,
+    JSON.stringify({ repoIdentities: { "Acme/App": { name: "Example Dev", email: "dev@example.com" } } }),
+  );
   const c = await loadConfig(path, "/home/ana");
   expect(c.repoIdentities["acme/app"]).toEqual({ name: "Example Dev", email: "dev@example.com" });
 });
@@ -35,10 +38,28 @@ test("repoIdentities keys are matched as lowercase owner/repo, whatever case the
 test("malformed repoIdentities entries are dropped, so launch still writes its footer and verify-pr reports the repo as unconfigured", async () => {
   const path = join(state.dir, "config.json");
   const good = { name: "Example Dev", email: "dev@example.com" };
-  await Bun.write(path, JSON.stringify({ repoIdentities: { "acme/null": null, "acme/text": "dev@example.com", "acme/number": { name: 1, email: "dev@example.com" }, "acme/blank": { name: "Example Dev", email: " " }, "acme/app": good } }));
+  await Bun.write(
+    path,
+    JSON.stringify({
+      repoIdentities: {
+        "acme/null": null,
+        "acme/text": "dev@example.com",
+        "acme/number": { name: 1, email: "dev@example.com" },
+        "acme/blank": { name: "Example Dev", email: " " },
+        "acme/app": good,
+      },
+    }),
+  );
   const c = await loadConfig(path, "/home/ana");
   expect(c.repoIdentities).toEqual({ "acme/app": good });
-  const lane = { key: "demo-lane", title: "demo", thread: "none", brief: "/b.md", done: "merged acme/app#1", openedAt: "2026-01-01T00:00:00Z" };
+  const lane = {
+    key: "demo-lane",
+    title: "demo",
+    thread: "none",
+    brief: "/b.md",
+    done: "merged acme/app#1",
+    openedAt: "2026-01-01T00:00:00Z",
+  };
   expect(footer(lane, "w1:p1", c.repoIdentities)).toContain("  - acme/app: git -c user.name='Example Dev'");
   for (const value of [null, "acme", [good]]) {
     await Bun.write(path, JSON.stringify({ repoIdentities: value }));
@@ -58,6 +79,9 @@ test("a goalMarker that is not a string falls back to the default, so a typo nev
 });
 
 test("hook templates fill each argument separately, so text with spaces or quotes stays one argument", () => {
-  const argv = fill(["notify", "--thread", "{thread}", "--text", "{text}"], { thread: "chat:1/2", text: `it's "done"; rm -rf /` });
+  const argv = fill(["notify", "--thread", "{thread}", "--text", "{text}"], {
+    thread: "chat:1/2",
+    text: `it's "done"; rm -rf /`,
+  });
   expect(argv).toEqual(["notify", "--thread", "chat:1/2", "--text", `it's "done"; rm -rf /`]);
 });

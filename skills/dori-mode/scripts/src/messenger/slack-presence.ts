@@ -9,7 +9,8 @@ export type OpenLine = (url: string, headers: Readonly<Record<string, string>>) 
 
 export const clientSocketUrl = async (slack: Slack, token: string): Promise<string> => {
   const res = await slack.call("client.getWebSocketURL", {});
-  if (typeof res.primary_websocket_url !== "string" || typeof res.routing_context !== "string") throw new Error("client.getWebSocketURL returned an unexpected shape");
+  if (typeof res.primary_websocket_url !== "string" || typeof res.routing_context !== "string")
+    throw new Error("client.getWebSocketURL returned an unexpected shape");
   const url = new URL(res.primary_websocket_url);
   const params: Record<string, string> = {
     token,
@@ -26,7 +27,11 @@ export const clientSocketUrl = async (slack: Slack, token: string): Promise<stri
   return url.toString();
 };
 
-export const slackPresence = (slack: Slack, open: OpenLine, auth: { readonly token: string; readonly cookie: string }) => {
+export const slackPresence = (
+  slack: Slack,
+  open: OpenLine,
+  auth: { readonly token: string; readonly cookie: string },
+) => {
   let line: ClientLine | null = null;
   let id = 0;
   return {
@@ -36,7 +41,10 @@ export const slackPresence = (slack: Slack, open: OpenLine, auth: { readonly tok
         return "tickled";
       }
       await slack.setPresence("auto");
-      line = open(await clientSocketUrl(slack, auth.token), { Cookie: `d=${auth.cookie}`, Origin: "https://app.slack.com" });
+      line = open(await clientSocketUrl(slack, auth.token), {
+        Cookie: `d=${auth.cookie}`,
+        Origin: "https://app.slack.com",
+      });
       return "opened";
     },
     async release(): Promise<void> {

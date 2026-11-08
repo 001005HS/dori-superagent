@@ -3,7 +3,17 @@ import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "no
 import { join } from "node:path";
 import { main } from "../src/cli.ts";
 import { done, dutyTick, memFreePct, ready, Refusal, report, startLane } from "../src/harness.ts";
-import { backlogAdd, backlogDecide, backlogDrop, backlogImport, HOUR, importId, loopTick, msUntilNext, restore } from "../src/loop.ts";
+import {
+  backlogAdd,
+  backlogDecide,
+  backlogDrop,
+  backlogImport,
+  HOUR,
+  importId,
+  loopTick,
+  msUntilNext,
+  restore,
+} from "../src/loop.ts";
 import type { Exec } from "../src/herdr.ts";
 import { World } from "./fake.ts";
 
@@ -15,7 +25,8 @@ function setup(opts: { lead?: boolean; exec?: (inner: Exec) => Exec } = {}) {
   if (opts.lead !== false) d.store.setRole("lead", "w1:p1");
   const brief = join(d.store.root, "brief.md");
   writeFileSync(brief, "Do the thing.");
-  const add = (id: string, o: Parameters<typeof backlogAdd>[3] = {}) => backlogAdd(d, id, brief, { cwd: d.store.root, ...o });
+  const add = (id: string, o: Parameters<typeof backlogAdd>[3] = {}) =>
+    backlogAdd(d, id, brief, { cwd: d.store.root, ...o });
   const tick = (o: Parameters<typeof loopTick>[1] = {}) => loopTick(d, { force: true, ...o });
   const destructive = () => w.calls.filter((c) => c.argv.join(" ").match(/pane close|pr merge|push/));
   return { w, d, lead, brief, add, tick, destructive };
@@ -52,18 +63,27 @@ describe("backlog", () => {
 
   test("import turns labelled issues into items once, with priority and decision labels", async () => {
     const { w, d } = setup();
-    w.gh = (argv) => argv[1] === "list"
-      ? { code: 0, stdout: JSON.stringify([
-          { number: 12, title: "Fix login", body: "steps", labels: [{ name: "dori" }, { name: "p1" }] },
-          { number: 13, title: "New billing", body: "", labels: [{ name: "dori" }, { name: "needs-decision" }] },
-        ]) }
-      : { code: 0, stdout: JSON.stringify({ state: argv[2] === "12" ? "CLOSED" : "OPEN" }) };
-    expect(await backlogImport(d, "acme/web-app", "dori", d.store.root)).toEqual({ added: ["web-app-12", "web-app-13"], capped: false });
+    w.gh = (argv) =>
+      argv[1] === "list"
+        ? {
+            code: 0,
+            stdout: JSON.stringify([
+              { number: 12, title: "Fix login", body: "steps", labels: [{ name: "dori" }, { name: "p1" }] },
+              { number: 13, title: "New billing", body: "", labels: [{ name: "dori" }, { name: "needs-decision" }] },
+            ]),
+          }
+        : { code: 0, stdout: JSON.stringify({ state: argv[2] === "12" ? "CLOSED" : "OPEN" }) };
+    expect(await backlogImport(d, "acme/web-app", "dori", d.store.root)).toEqual({
+      added: ["web-app-12", "web-app-13"],
+      capped: false,
+    });
     expect(d.store.item("web-app-12")).toMatchObject({ priority: 1, source: "acme/web-app#12" });
     expect(readFileSync(d.store.item("web-app-12")!.brief, "utf8")).toContain("issues/12");
     expect(d.store.item("web-app-13")!.decision).toContain("needs-decision");
     expect(await backlogImport(d, "acme/web-app", "dori", d.store.root)).toEqual({ added: [], capped: false });
-    await expect(backlogImport(d, "other/web-app", "dori", d.store.root)).rejects.toThrow("already used by acme/web-app#12");
+    await expect(backlogImport(d, "other/web-app", "dori", d.store.root)).rejects.toThrow(
+      "already used by acme/web-app#12",
+    );
     const run = await loopTick(d);
     expect(run.synced).toEqual(["web-app-12 dropped (acme/web-app#12 closed)"]);
     expect(run.started).toEqual([]);
@@ -197,7 +217,9 @@ describe("hourly loop", () => {
     w.clock += 4 * HOUR;
     await dutyTick(d);
     expect(d.store.lane("busy")!.lastActivityAt).toBe(w.clock);
-    const lanesBefore = readdirSync(join(d.store.root, "lanes")).map((f) => readFileSync(join(d.store.root, "lanes", f), "utf8"));
+    const lanesBefore = readdirSync(join(d.store.root, "lanes")).map((f) =>
+      readFileSync(join(d.store.root, "lanes", f), "utf8"),
+    );
     const run = await tick({ maxStarts: 0 });
     expect(run.findings.sort()).toEqual([
       "busy working, no report for 4h",
@@ -206,7 +228,9 @@ describe("hourly loop", () => {
       "quiet working, no report for 4h",
       "wait-ci waiting 4h on: WAITING: CI on acme/app#3",
     ]);
-    const lanesAfter = readdirSync(join(d.store.root, "lanes")).map((f) => readFileSync(join(d.store.root, "lanes", f), "utf8"));
+    const lanesAfter = readdirSync(join(d.store.root, "lanes")).map((f) =>
+      readFileSync(join(d.store.root, "lanes", f), "utf8"),
+    );
     expect(lanesAfter).toEqual(lanesBefore);
     expect(destructive()).toEqual([]);
   });
@@ -214,8 +238,13 @@ describe("hourly loop", () => {
   test("a decision is asked once, reminded once after 6 hours, then left alone until answered", async () => {
     const { w, d, lead, add } = setup();
     add("pick-db", { decision: "postgres or sqlite?" });
-    const at = async (h: number) => { w.clock += h * HOUR; return loopTick(d); };
-    expect((await at(0)).asked).toEqual(["[DECIDE pick-db] postgres or sqlite? -> dori backlog decide pick-db --text '...' | dori backlog drop pick-db"]);
+    const at = async (h: number) => {
+      w.clock += h * HOUR;
+      return loopTick(d);
+    };
+    expect((await at(0)).asked).toEqual([
+      "[DECIDE pick-db] postgres or sqlite? -> dori backlog decide pick-db --text '...' | dori backlog drop pick-db",
+    ]);
     expect((await at(1)).asked).toEqual([]);
     expect((await at(5)).asked[0]).toStartWith("(reminder) [DECIDE pick-db]");
     expect((await at(6)).asked).toEqual([]);
@@ -239,7 +268,7 @@ describe("hourly loop", () => {
     writeFileSync(d.store.loopPath("lock"), JSON.stringify({ pid: process.ppid, at: 0, nonce: "other" }));
     expect((await tick()).skipped).toBe(`locked by pid ${process.ppid}`);
     expect(readFileSync(d.store.loopPath("lock"), "utf8")).toContain('"other"');
-    writeFileSync(d.store.loopPath("lock"), "{\"pid\": 12");
+    writeFileSync(d.store.loopPath("lock"), '{"pid": 12');
     expect((await tick()).started).toEqual(["work (p5)"]);
     writeFileSync(d.store.loopPath("lock"), JSON.stringify({ pid: 2147483647, at: 0, nonce: "dead" }));
     w.clock += HOUR;
@@ -249,7 +278,8 @@ describe("hourly loop", () => {
 
   test("failed lane starts are recorded, each uses a slot, and the run still reports what is waiting; with no lead nothing starts", async () => {
     const failing = setup({
-      exec: (inner) => async (cmd, argv) => (cmd === "herdr" && argv[0] === "tab" ? { code: 1, stdout: "", stderr: "server down" } : inner(cmd, argv)),
+      exec: (inner) => async (cmd, argv) =>
+        cmd === "herdr" && argv[0] === "tab" ? { code: 1, stdout: "", stderr: "server down" } : inner(cmd, argv),
     });
     failing.add("one");
     failing.add("two");
@@ -278,7 +308,10 @@ describe("hourly loop", () => {
     add("broken", { priority: 1 });
     add("healthy", { priority: 5 });
     rmSync(d.store.item("broken")!.brief);
-    const hourly = async () => { w.clock += HOUR; return loopTick(d, { maxStarts: 1 }); };
+    const hourly = async () => {
+      w.clock += HOUR;
+      return loopTick(d, { maxStarts: 1 });
+    };
     expect((await hourly()).findings[0]).toStartWith("start broken failed");
     const second = await hourly();
     expect(second.findings[0]).toStartWith("start broken failed");
@@ -327,7 +360,9 @@ describe("hardening", () => {
   test("a lane that opened but whose [START] could not reach the lead counts as started", async () => {
     const { d, add, tick } = setup({
       exec: (inner) => async (cmd, argv) =>
-        cmd === "herdr" && argv[0] === "agent" && argv[2] === "w1:p1" ? { code: 1, stdout: "", stderr: "lead pane hung" } : inner(cmd, argv),
+        cmd === "herdr" && argv[0] === "agent" && argv[2] === "w1:p1"
+          ? { code: 1, stdout: "", stderr: "lead pane hung" }
+          : inner(cmd, argv),
     });
     add("solo");
     const run = await tick({ maxStarts: 1 });
@@ -394,8 +429,24 @@ describe("hardening", () => {
   test("macOS memory uses the kernel's available level, not free pages; Linux and a broken sysctl fall back to freemem", () => {
     const free = () => 3;
     expect(memFreePct("darwin", () => "72\n", free)).toBe(72);
-    expect(memFreePct("linux", () => { throw new Error("must not be called on linux"); }, free)).toBe(3);
-    expect(memFreePct("darwin", () => { throw new Error("no sysctl"); }, free)).toBe(3);
+    expect(
+      memFreePct(
+        "linux",
+        () => {
+          throw new Error("must not be called on linux");
+        },
+        free,
+      ),
+    ).toBe(3);
+    expect(
+      memFreePct(
+        "darwin",
+        () => {
+          throw new Error("no sysctl");
+        },
+        free,
+      ),
+    ).toBe(3);
     expect(memFreePct("darwin", () => "garbage", free)).toBe(3);
   });
 

@@ -19,7 +19,17 @@ export const listPanes = async (run: Runner): Promise<Pane[]> => {
 };
 
 export const readScreen = async (run: Runner, pane: string, lines?: number): Promise<string> =>
-  (await run(["herdr", "pane", "read", pane, "--source", lines ? "recent" : "visible", ...(lines ? ["--lines", String(lines)] : [])])).out;
+  (
+    await run([
+      "herdr",
+      "pane",
+      "read",
+      pane,
+      "--source",
+      lines ? "recent" : "visible",
+      ...(lines ? ["--lines", String(lines)] : []),
+    ])
+  ).out;
 
 /** States herdr reports for a pane whose agent is running. A screen read never stands in for these. */
 export const ALIVE_STATUSES: ReadonlySet<string> = new Set(["idle", "working", "blocked", "done"]);
@@ -28,7 +38,10 @@ export const agentStatus = async (run: Runner, pane: string): Promise<string | u
   (await listPanes(run)).find((p) => p.pane_id === pane)?.agent_status;
 
 /** Like agentStatus, but a failed lookup comes back as its error text instead of being swallowed. */
-export const statusLookup = async (run: Runner, pane: string): Promise<{ readonly status?: string; readonly error?: string }> => {
+export const statusLookup = async (
+  run: Runner,
+  pane: string,
+): Promise<{ readonly status?: string; readonly error?: string }> => {
   try {
     return { status: await agentStatus(run, pane) };
   } catch (e) {
@@ -37,9 +50,29 @@ export const statusLookup = async (run: Runner, pane: string): Promise<{ readonl
 };
 
 const SHELLS: ReadonlySet<string> = new Set([
-  "sh", "ash", "bash", "zsh", "fish", "dash", "ksh", "mksh", "tcsh", "csh", "nu", "elvish", "xonsh", "pwsh", "powershell", "busybox",
+  "sh",
+  "ash",
+  "bash",
+  "zsh",
+  "fish",
+  "dash",
+  "ksh",
+  "mksh",
+  "tcsh",
+  "csh",
+  "nu",
+  "elvish",
+  "xonsh",
+  "pwsh",
+  "powershell",
+  "busybox",
 ]);
-const baseName = (value: unknown): string => String(value ?? "").replace(/^-/, "").split("/").pop()!.toLowerCase();
+const baseName = (value: unknown): string =>
+  String(value ?? "")
+    .replace(/^-/, "")
+    .split("/")
+    .pop()!
+    .toLowerCase();
 // A shell runs a command (not a prompt) only with an explicit command flag: -c, also inside combined short flags such
 // as -lc, or PowerShell's -Command/-File/-EncodedCommand (whole words only: its other long flags contain a 'c'). Any other operand (a script path, --rcfile FILE, -o OPT) stays held.
 const runsCommand = (shell: string, arg: string): boolean =>
@@ -48,7 +81,8 @@ const runsCommand = (shell: string, arg: string): boolean =>
     : /^-[A-Za-z]*c[A-Za-z]*$/.test(arg);
 // PowerShell's -NoExit (any prefix it accepts: -noe, -noex, -noexi, -noexit, one or two dashes) keeps an interactive
 // prompt after the command runs, so that shell is held.
-const keepsPrompt = (shell: string, arg: string): boolean => (shell === "pwsh" || shell === "powershell") && /^--?noe(x(i(t)?)?)?$/i.test(arg);
+const keepsPrompt = (shell: string, arg: string): boolean =>
+  (shell === "pwsh" || shell === "powershell") && /^--?noe(x(i(t)?)?)?$/i.test(arg);
 
 /**
  * True when `herdr pane process-info` shows an interactive shell in the pane's foreground group, or cannot be read.
@@ -60,7 +94,8 @@ export const shellInFront = async (run: Runner, pane: string): Promise<boolean> 
   try {
     const r = await run(["herdr", "pane", "process-info", "--pane", pane]);
     if (r.code !== 0) throw new Error(r.err || r.out);
-    const procs = (JSON.parse(r.out) as { result?: { process_info?: { foreground_processes?: unknown } } }).result?.process_info?.foreground_processes;
+    const procs = (JSON.parse(r.out) as { result?: { process_info?: { foreground_processes?: unknown } } }).result
+      ?.process_info?.foreground_processes;
     if (!Array.isArray(procs) || procs.length === 0) return true;
     for (const proc of procs as { name?: unknown; argv?: unknown }[]) {
       let name = baseName(proc?.name);
@@ -72,7 +107,9 @@ export const shellInFront = async (run: Runner, pane: string): Promise<boolean> 
     }
     return false;
   } catch (e) {
-    console.error(`sendVerified ${pane}: herdr pane process-info failed (${e instanceof Error ? e.message : String(e)}); holding the send`);
+    console.error(
+      `sendVerified ${pane}: herdr pane process-info failed (${e instanceof Error ? e.message : String(e)}); holding the send`,
+    );
     return true;
   }
 };

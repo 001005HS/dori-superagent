@@ -1,7 +1,16 @@
 // The hourly loop: sync the backlog with live lanes, audit for missed work, start the next item
 // that needs no decision, ask the lead the open questions, and record the run. It never merges,
 // never pushes, never closes a pane and never edits a lane record. See docs/hourly-loop.md.
-import { appendFileSync, copyFileSync, existsSync, linkSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  copyFileSync,
+  existsSync,
+  linkSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { KEY_RE, Refusal, reservedKey, startLane, tellLead, type Deps } from "./harness.ts";
@@ -35,15 +44,25 @@ export function backlogAdd(
   const reserved = reservedKey(id);
   if (reserved) throw new Refusal(reserved);
   const priority = opts.priority ?? 5;
-  if (!Number.isInteger(priority) || priority < 1 || priority > 9) throw new Refusal("--priority must be 1 (first) to 9 (last)");
+  if (!Number.isInteger(priority) || priority < 1 || priority > 9)
+    throw new Refusal("--priority must be 1 (first) to 9 (last)");
   if (!existsSync(briefFile)) throw new Refusal(`no brief file ${briefFile}`);
   const old = d.store.item(id);
-  if (old && (old.status === "open" || old.status === "running")) throw new Refusal(`item ${id} is already ${old.status}`);
+  if (old && (old.status === "open" || old.status === "running"))
+    throw new Refusal(`item ${id} is already ${old.status}`);
   copyFileSync(briefFile, d.store.itemBrief(id));
   const now = d.now();
   const item: Item = {
-    id, title: opts.title ?? id, brief: d.store.itemBrief(id), cwd: resolve(opts.cwd ?? process.cwd()), priority,
-    status: "open", attempts: 0, createdAt: now, updatedAt: now, log: [],
+    id,
+    title: opts.title ?? id,
+    brief: d.store.itemBrief(id),
+    cwd: resolve(opts.cwd ?? process.cwd()),
+    priority,
+    status: "open",
+    attempts: 0,
+    createdAt: now,
+    updatedAt: now,
+    log: [],
     ...(opts.decision ? { decision: opts.decision } : {}),
     ...(opts.source ? { source: opts.source } : {}),
   };
@@ -91,16 +110,39 @@ export const IMPORT_LIMIT = 1000;
 
 /** A lane-key-safe id per source: `<repo>-<n>`, with a short hash of the full source when the slug had to be cut. */
 export function importId(repo: string, n: number): string {
-  const slug = repo.split("/")[1]!.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^[^a-z]+/, "") || "issue";
+  const slug =
+    repo
+      .split("/")[1]!
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, "-")
+      .replace(/^[^a-z]+/, "") || "issue";
   const plain = `${slug}-${n}`;
   if (plain.length <= 41) return plain;
   const tag = `-${createHash("sha256").update(`${repo}#${n}`).digest("hex").slice(0, 6)}-${n}`;
   return `${slug.slice(0, 41 - tag.length).replace(/-+$/, "")}${tag}`;
 }
 
-export async function backlogImport(d: Deps, repo: string, label = "dori", cwd?: string): Promise<{ added: string[]; capped: boolean }> {
+export async function backlogImport(
+  d: Deps,
+  repo: string,
+  label = "dori",
+  cwd?: string,
+): Promise<{ added: string[]; capped: boolean }> {
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Refusal(`repo must look like owner/repo, got ${repo}`);
-  const r = await d.exec("gh", ["issue", "list", "--repo", repo, "--label", label, "--state", "open", "--limit", String(IMPORT_LIMIT), "--json", "number,title,body,labels"]);
+  const r = await d.exec("gh", [
+    "issue",
+    "list",
+    "--repo",
+    repo,
+    "--label",
+    label,
+    "--state",
+    "open",
+    "--limit",
+    String(IMPORT_LIMIT),
+    "--json",
+    "number,title,body,labels",
+  ]);
   if (r.code !== 0) throw new Error(`gh issue list failed: ${(r.stderr || r.stdout).trim()}`);
   const known = new Set(d.store.items().map((i) => i.source));
   const added: string[] = [];
@@ -112,13 +154,21 @@ export async function backlogImport(d: Deps, repo: string, label = "dori", cwd?:
     const p = names.map((n) => /^p([1-9])$/.exec(n)?.[1]).find(Boolean);
     const id = importId(repo, issue.number);
     const clash = d.store.item(id);
-    if (clash && clash.source !== source) throw new Refusal(`import id ${id} for ${source} is already used by ${clash.source ?? "a hand-added item"}`);
+    if (clash && clash.source !== source)
+      throw new Refusal(`import id ${id} for ${source} is already used by ${clash.source ?? "a hand-added item"}`);
     const brief = d.store.loopPath(`import-${id}.md`);
-    writeFileSync(brief, `# ${issue.title}\n\nSource: https://github.com/${repo}/issues/${issue.number}\n\n${issue.body}\n`);
+    writeFileSync(
+      brief,
+      `# ${issue.title}\n\nSource: https://github.com/${repo}/issues/${issue.number}\n\n${issue.body}\n`,
+    );
     backlogAdd(d, id, brief, {
-      title: issue.title, cwd, source,
+      title: issue.title,
+      cwd,
+      source,
       ...(p ? { priority: Number(p) } : {}),
-      ...(names.includes("needs-decision") ? { decision: `issue ${source} is labelled needs-decision: ${issue.title}` } : {}),
+      ...(names.includes("needs-decision")
+        ? { decision: `issue ${source} is labelled needs-decision: ${issue.title}` }
+        : {}),
     });
     rmSync(brief, { force: true });
     added.push(id);
@@ -235,7 +285,8 @@ const hours = (ms: number): number => Math.floor(ms / HOUR);
 
 async function ghState(d: Deps, kind: "pr" | "issue", repo: string, n: string): Promise<string> {
   const r = await d.exec("gh", [kind, "view", n, "--repo", repo, "--json", "state"]);
-  if (r.code !== 0) throw new Error(`gh ${kind} view ${repo}#${n}: ${(r.stderr || r.stdout).trim() || `exit ${r.code}`}`);
+  if (r.code !== 0)
+    throw new Error(`gh ${kind} view ${repo}#${n}: ${(r.stderr || r.stdout).trim() || `exit ${r.code}`}`);
   return String((JSON.parse(r.stdout) as { state?: string }).state);
 }
 
@@ -297,19 +348,29 @@ async function audit(d: Deps, run: LoopRun): Promise<void> {
       run.findings.push(`${lane.key} pane ${lane.paneId} is gone`);
     } else if (lane.status === "ready") {
       const age = now - (lane.final?.at ?? lane.lastActivityAt);
-      if (age >= READY_HOURS * HOUR) run.findings.push(`${lane.key} READY ${hours(age)}h ago, not closed: dori done ${lane.key}`);
+      if (age >= READY_HOURS * HOUR)
+        run.findings.push(`${lane.key} READY ${hours(age)}h ago, not closed: dori done ${lane.key}`);
     } else if (now - lastReport(lane) >= STALE_HOURS * HOUR) {
       const age = hours(now - lastReport(lane));
-      run.findings.push(lane.status === "waiting"
-        ? `${lane.key} waiting ${age}h on: ${lane.log.at(-1)?.text.slice(0, 80) ?? "?"}`
-        : `${lane.key} working, no report for ${age}h`);
+      run.findings.push(
+        lane.status === "waiting"
+          ? `${lane.key} waiting ${age}h on: ${lane.log.at(-1)?.text.slice(0, 80) ?? "?"}`
+          : `${lane.key} working, no report for ${age}h`,
+      );
     }
   }
 }
 
 const isOpenLane = (status: string): boolean => status !== "done" && status !== "lost";
 
-async function pull(d: Deps, run: LoopRun, maxLanes: number, maxStarts: number, maxLoad: number | undefined, nonce: string): Promise<void> {
+async function pull(
+  d: Deps,
+  run: LoopRun,
+  maxLanes: number,
+  maxStarts: number,
+  maxLoad: number | undefined,
+  nonce: string,
+): Promise<void> {
   if (!d.store.roles().lead) {
     run.held.push("no lead pane registered");
     return;
@@ -317,11 +378,14 @@ async function pull(d: Deps, run: LoopRun, maxLanes: number, maxStarts: number, 
   const host = d.host();
   const open = d.store.lanes().filter((l) => isOpenLane(l.status)).length;
   let starts = Math.max(0, Math.min(maxLanes - open, maxStarts));
-  const candidates = d.store.items()
+  const candidates = d.store
+    .items()
     .filter((i) => i.status === "open" && !i.decision && !isOpenLane(d.store.lane(i.id)?.status ?? "done"))
     .sort((a, b) => a.priority - b.priority || a.createdAt - b.createdAt || a.id.localeCompare(b.id));
   if (candidates.length > 0 && (host.load1 > (maxLoad ?? host.cores) || host.memFreePct < MEM_FREE_MIN_PCT)) {
-    run.held.push(`host busy: load ${host.load1.toFixed(1)} (limit ${maxLoad ?? host.cores}), mem free ${host.memFreePct}%`);
+    run.held.push(
+      `host busy: load ${host.load1.toFixed(1)} (limit ${maxLoad ?? host.cores}), mem free ${host.memFreePct}%`,
+    );
     starts = 0;
   }
   // Each start attempt uses one of this run's slots, so a broken host costs at most `starts` failures per run.
@@ -340,7 +404,8 @@ async function pull(d: Deps, run: LoopRun, maxLanes: number, maxStarts: number, 
       const lane = d.store.lane(item.id);
       if (!lane || !isOpenLane(lane.status) || lane.createdAt < run.at) {
         item.startFailures = (item.startFailures ?? 0) + 1;
-        if (item.startFailures >= MAX_ATTEMPTS) item.decision = `lane start failed ${item.startFailures} times (${why.slice(0, 120)}); fix the brief or cwd, or drop?`;
+        if (item.startFailures >= MAX_ATTEMPTS)
+          item.decision = `lane start failed ${item.startFailures} times (${why.slice(0, 120)}); fix the brief or cwd, or drop?`;
         log(d, item, "start", `failed: ${why}`);
         run.findings.push(`start ${item.id} failed: ${why}`);
         continue;
@@ -353,7 +418,9 @@ async function pull(d: Deps, run: LoopRun, maxLanes: number, maxStarts: number, 
   }
   const waiting = candidates.length - tried;
   if (waiting > 0) {
-    run.held.push(`${waiting} item(s) waiting: ${Math.max(0, maxLanes - open - run.started.length)} free of ${maxLanes} lanes, max ${maxStarts}/run`);
+    run.held.push(
+      `${waiting} item(s) waiting: ${Math.max(0, maxLanes - open - run.started.length)} free of ${maxLanes} lanes, max ${maxStarts}/run`,
+    );
   }
 }
 
@@ -382,7 +449,8 @@ export function summary(run: LoopRun): string {
       ` | items open ${s.items.open} (decide ${s.items.decide}) running ${s.items.running}` +
       ` | load ${s.host.load1.toFixed(1)}/${s.host.cores} mem-free ${s.host.memFreePct}%`,
   ];
-  for (const k of ["synced", "findings", "started", "held"] as const) if (run[k].length) lines.push(`${k}: ${run[k].join("; ")}`);
+  for (const k of ["synced", "findings", "started", "held"] as const)
+    if (run[k].length) lines.push(`${k}: ${run[k].join("; ")}`);
   lines.push(...run.asked);
   return lines.join("\n");
 }

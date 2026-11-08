@@ -15,7 +15,13 @@ export const newDeadPaneState = (): DeadPaneState => ({ unknown: new Map(), last
  * reads are a full loop interval apart and a screen mid-redraw never counts. A marker seen once is pending. Anything
  * else is unrecognised, counted per pane, with one alert after UNRECOGNISED_ALERT_AFTER ticks in a row.
  */
-export const deadPaneTick = async (run: Runner, config: DoriConfig, seen: Set<string>, hourKey: string, state: DeadPaneState = newDeadPaneState()): Promise<string[]> => {
+export const deadPaneTick = async (
+  run: Runner,
+  config: DoriConfig,
+  seen: Set<string>,
+  hourKey: string,
+  state: DeadPaneState = newDeadPaneState(),
+): Promise<string[]> => {
   const out: string[] = [];
   const watch = new Set(config.workspaces);
   const skip = new Set([config.leadPane, ...config.ignorePanes].filter(Boolean));
@@ -41,7 +47,8 @@ export const deadPaneTick = async (run: Runner, config: DoriConfig, seen: Set<st
     }
     const n = (state.unknown.get(pane.pane_id) ?? 0) + 1;
     state.unknown.set(pane.pane_id, n);
-    if (n === UNRECOGNISED_ALERT_AFTER) out.push(`UNRECOGNISED_PANE ${pane.pane_id} dead-panes: no alive status and no dead marker for ${n} ticks`);
+    if (n === UNRECOGNISED_ALERT_AFTER)
+      out.push(`UNRECOGNISED_PANE ${pane.pane_id} dead-panes: no alive status and no dead marker for ${n} ticks`);
   }
   return out;
 };

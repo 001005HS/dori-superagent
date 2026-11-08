@@ -2,11 +2,35 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
-  defaultDeps, done, dutyTick, inboxList, mergeGate, ready, Refusal, releaseHeld, report, review, send, sendToShell, startLane, ROLES,
-  type Deps, type SendResult,
+  defaultDeps,
+  done,
+  dutyTick,
+  inboxList,
+  mergeGate,
+  ready,
+  Refusal,
+  releaseHeld,
+  report,
+  review,
+  send,
+  sendToShell,
+  startLane,
+  ROLES,
+  type Deps,
+  type SendResult,
 } from "./harness.ts";
 import { shq } from "./herdr.ts";
-import { backlogAdd, backlogDecide, backlogDrop, backlogImport, loopTick, msUntilNext, summary, HOUR, IMPORT_LIMIT } from "./loop.ts";
+import {
+  backlogAdd,
+  backlogDecide,
+  backlogDrop,
+  backlogImport,
+  loopTick,
+  msUntilNext,
+  summary,
+  HOUR,
+  IMPORT_LIMIT,
+} from "./loop.ts";
 import type { Role } from "./store.ts";
 
 const USAGE = `dori - a proactive multi-session harness on herdr + omo
@@ -39,7 +63,22 @@ send, report and ready exit 3 and print HELD <target> when the delivery may or m
 it is held and never resent, so do not send it again: check the pane, then dori inbox ack or dori inbox resend it.
 QUEUED (exit 0) means it waits in the pane's inbox.`;
 
-const COMMANDS = new Set(["up", "role", "start", "report", "ready", "send", "inbox", "duty", "review", "merge", "done", "status", "loop", "backlog"]);
+const COMMANDS = new Set([
+  "up",
+  "role",
+  "start",
+  "report",
+  "ready",
+  "send",
+  "inbox",
+  "duty",
+  "review",
+  "merge",
+  "done",
+  "status",
+  "loop",
+  "backlog",
+]);
 
 type Args = { pos: string[]; flags: Map<string, string[]> };
 
@@ -52,7 +91,10 @@ function parse(argv: readonly string[]): Args {
   const flags = new Map<string, string[]>();
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
-    if (!a.startsWith("--")) { pos.push(a); continue; }
+    if (!a.startsWith("--")) {
+      pos.push(a);
+      continue;
+    }
     const name = a.slice(2);
     const next = argv[i + 1];
     const value = BOOLEAN_FLAGS.has(name) || next === undefined ? "true" : (i++, next);
@@ -105,7 +147,9 @@ async function up(d: Deps, cwd: string): Promise<void> {
   await d.herdr.run(loop.paneId, `${d.doriCmd} duty --interval 60`);
   const hourly = await d.herdr.split(loop.paneId, cwd, { ...env, HERDR_WORKSPACE_ID: lead.workspaceId });
   await d.herdr.run(hourly.paneId, `${d.doriCmd} loop`);
-  console.log(`UP lead=${lead.paneId} duty=${duty.paneId} loop=${loop.paneId} hourly=${hourly.paneId} home=${d.store.root}`);
+  console.log(
+    `UP lead=${lead.paneId} duty=${duty.paneId} loop=${loop.paneId} hourly=${hourly.paneId} home=${d.store.root}`,
+  );
 }
 
 function status(d: Deps): void {
@@ -114,7 +158,9 @@ function status(d: Deps): void {
   for (const l of d.store.lanes()) {
     const last = l.log.at(-1);
     const age = Math.round((d.now() - l.lastActivityAt) / 60_000);
-    console.log(`${l.key.padEnd(24)} ${l.status.padEnd(8)} ${l.paneId.padEnd(8)} active ${age}m ago  ${last ? `${last.kind}: ${last.text.slice(0, 60)}` : ""}`);
+    console.log(
+      `${l.key.padEnd(24)} ${l.status.padEnd(8)} ${l.paneId.padEnd(8)} active ${age}m ago  ${last ? `${last.kind}: ${last.text.slice(0, 60)}` : ""}`,
+    );
   }
 }
 
@@ -136,7 +182,8 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
     }
     case "start": {
       const lane = await startLane(d, need(x, "lane key"), need(one(a, "brief"), "--brief"), {
-        cwd: one(a, "cwd"), workspace: one(a, "workspace"),
+        cwd: one(a, "cwd"),
+        workspace: one(a, "workspace"),
       });
       console.log(`STARTED ${lane.key} pane=${lane.paneId} brief=${lane.brief}`);
       return 0;
@@ -165,13 +212,16 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
       if (x === "list") {
         const { paneId, entries } = inboxList(d, target);
         if (entries.length === 0) console.log(`EMPTY ${paneId}`);
-        for (const e of entries) console.log(`${e.index} ${e.state} from ${e.from} queued ${new Date(e.at).toISOString()} ${e.preview}`);
+        for (const e of entries)
+          console.log(`${e.index} ${e.state} from ${e.from} queued ${new Date(e.at).toISOString()} ${e.preview}`);
         return 0;
       }
       if (x === "ack" || x === "resend") {
         const index = Number(need(a.pos[3], "entry index (see dori inbox list)"));
         const paneId = releaseHeld(d, target, index, x);
-        console.log(x === "ack" ? `ACKED ${paneId} ${index}` : `RELEASED ${paneId} ${index}: the next flush delivers it`);
+        console.log(
+          x === "ack" ? `ACKED ${paneId} ${index}` : `RELEASED ${paneId} ${index}: the next flush delivers it`,
+        );
         return 0;
       }
       throw new Refusal(`unknown inbox command ${x}\n\n${USAGE}`);
@@ -195,9 +245,13 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
       if (x !== undefined) throw new Refusal(`unknown duty command ${x}\n\n${USAGE}`);
       const interval = Number(one(a, "interval") ?? "60") * 1000;
       // Bun.sleep(NaN) and any Bun.sleep under 1 ms return at once, so a bad value would run duty passes back to back.
-      if (!(Number.isFinite(interval) && interval >= 1)) throw new Refusal("--interval must be a number of seconds, 0.001 or more");
+      if (!(Number.isFinite(interval) && interval >= 1))
+        throw new Refusal("--interval must be a number of seconds, 0.001 or more");
       do {
-        for (const e of await dutyTick(d)) console.log(`DUTY ${[e.lane ?? e.pane, e.action].filter(Boolean).join(" ")}${e.detail ? `: ${e.detail}` : ""}`);
+        for (const e of await dutyTick(d))
+          console.log(
+            `DUTY ${[e.lane ?? e.pane, e.action].filter(Boolean).join(" ")}${e.detail ? `: ${e.detail}` : ""}`,
+          );
         if (one(a, "once")) break;
         await Bun.sleep(interval);
       } while (true);
@@ -233,17 +287,29 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
         maxLanes: Number(one(a, "max-lanes") ?? process.env["DORI_MAX_LANES"] ?? "3"),
         maxStarts: Number(one(a, "max-starts") ?? process.env["DORI_MAX_STARTS"] ?? "2"),
         force: one(a, "force") === "true",
-        ...(one(a, "max-load") ?? process.env["DORI_MAX_LOAD"] ? { maxLoad: Number(one(a, "max-load") ?? process.env["DORI_MAX_LOAD"]) } : {}),
+        ...((one(a, "max-load") ?? process.env["DORI_MAX_LOAD"])
+          ? { maxLoad: Number(one(a, "max-load") ?? process.env["DORI_MAX_LOAD"]) }
+          : {}),
       };
       const count = (n: number): boolean => Number.isInteger(n) && n >= 0;
-      if (!(Number.isFinite(interval) && interval > 0) || !count(opts.maxLanes) || !count(opts.maxStarts) ||
-        !(opts.maxLoad === undefined || (Number.isFinite(opts.maxLoad) && opts.maxLoad > 0))) {
-        throw new Refusal("--interval and --max-load must be finite positive numbers; --max-lanes and --max-starts whole numbers >= 0");
+      if (
+        !(Number.isFinite(interval) && interval > 0) ||
+        !count(opts.maxLanes) ||
+        !count(opts.maxStarts) ||
+        !(opts.maxLoad === undefined || (Number.isFinite(opts.maxLoad) && opts.maxLoad > 0))
+      ) {
+        throw new Refusal(
+          "--interval and --max-load must be finite positive numbers; --max-lanes and --max-starts whole numbers >= 0",
+        );
       }
       do {
         try {
           const run = await loopTick(d, opts);
-          console.log(run.skipped ? `LOOP skipped: ${run.skipped}` : `LOOP started=${run.started.length} findings=${run.findings.length} asked=${run.asked.length}`);
+          console.log(
+            run.skipped
+              ? `LOOP skipped: ${run.skipped}`
+              : `LOOP started=${run.started.length} findings=${run.findings.length} asked=${run.asked.length}`,
+          );
         } catch (e) {
           console.error(`LOOP ERROR ${e instanceof Error ? e.message : String(e)}`);
           if (one(a, "once")) return 1;
@@ -259,13 +325,17 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
         const id = need(a.pos[2], "item id");
         const p = one(a, "priority");
         const item = backlogAdd(d, id, need(one(a, "brief"), "--brief"), {
-          title: one(a, "title"), cwd: one(a, "cwd"), decision: one(a, "decision"),
+          title: one(a, "title"),
+          cwd: one(a, "cwd"),
+          decision: one(a, "decision"),
           ...(p !== undefined ? { priority: Number(p) } : {}),
         });
         console.log(`ADDED ${item.id} p${item.priority}${item.decision ? " (needs decision)" : ""}`);
       } else if (x === "list" || x === undefined) {
         for (const i of d.store.items()) {
-          console.log(`${i.id.padEnd(24)} ${i.status.padEnd(8)} p${i.priority}  ${i.decision ? `DECIDE: ${i.decision}` : i.title}`);
+          console.log(
+            `${i.id.padEnd(24)} ${i.status.padEnd(8)} p${i.priority}  ${i.decision ? `DECIDE: ${i.decision}` : i.title}`,
+          );
         }
       } else if (x === "decide") {
         const id = need(a.pos[2], "item id");
@@ -276,9 +346,17 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
         backlogDrop(d, id, one(a, "text"));
         console.log(`DROPPED ${id}`);
       } else if (x === "import") {
-        const { added, capped } = await backlogImport(d, need(a.pos[2], "owner/repo"), one(a, "label") ?? "dori", one(a, "cwd"));
+        const { added, capped } = await backlogImport(
+          d,
+          need(a.pos[2], "owner/repo"),
+          one(a, "label") ?? "dori",
+          one(a, "cwd"),
+        );
         console.log(`IMPORTED ${added.length}${added.length ? `: ${added.join(", ")}` : ""}`);
-        if (capped) console.error(`WARNING: gh returned ${IMPORT_LIMIT} issues, the import limit; some labelled issues may be missing`);
+        if (capped)
+          console.error(
+            `WARNING: gh returned ${IMPORT_LIMIT} issues, the import limit; some labelled issues may be missing`,
+          );
       } else {
         throw new Refusal(`unknown backlog command ${x}\n\n${USAGE}`);
       }

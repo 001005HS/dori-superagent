@@ -13,4 +13,5 @@ export const canLaunch = (s: HostSample, t: GuardThresholds): LaunchVerdict => {
 };
 
 export const idleLaneFor = (lanes: readonly Lane[], cwd: string, idlePanes: ReadonlySet<string>): Lane | null =>
-  lanes.find((l) => statusOf(l) === "working" && l.cwd === cwd && l.pane !== undefined && idlePanes.has(l.pane)) ?? null;
+  lanes.find((l) => statusOf(l) === "working" && l.cwd === cwd && l.pane !== undefined && idlePanes.has(l.pane)) ??
+  null;

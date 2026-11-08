@@ -9,15 +9,8 @@
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": false,
     "skipLibCheck": true,
-    "types": [
-      "bun"
-    ],
-    "lib": [
-      "ESNext"
-    ]
+    "types": ["bun"],
+    "lib": ["ESNext"]
   },
-  "include": [
-    "src",
-    "test"
-  ]
+  "include": ["src", "test"]
 }

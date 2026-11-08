@@ -7,12 +7,23 @@ import { depsFor, fakeClock, newWorld, sent, withState, type World, WT } from ".
 
 const T0 = Date.parse("2026-01-01T12:00:00.000Z");
 const MIN = 60_000;
-const lane: Lane = { key: "demo-lane", title: "demo", thread: "chat:team/123", pane: "w:p1", brief: "/briefs/demo.md", done: "merged acme/app#1; closed acme/app#2", cwd: "/repo", openedAt: new Date(T0 - 60 * MIN).toISOString() };
+const lane: Lane = {
+  key: "demo-lane",
+  title: "demo",
+  thread: "chat:team/123",
+  pane: "w:p1",
+  brief: "/briefs/demo.md",
+  done: "merged acme/app#1; closed acme/app#2",
+  cwd: "/repo",
+  openedAt: new Date(T0 - 60 * MIN).toISOString(),
+};
 
 let state: ReturnType<typeof withState>;
 let world: World;
-const at = (ms: number) => depsFor(world, fakeClock(ms), state.dir, { hooks: { threadDone: ["notify", "{thread}", "{text}"] } });
-const closedVia = () => world.calls.filter((c) => c[0] === "herdr" && (c[1] === "pane" || c[1] === "tab") && c[2] === "close");
+const at = (ms: number) =>
+  depsFor(world, fakeClock(ms), state.dir, { hooks: { threadDone: ["notify", "{thread}", "{text}"] } });
+const closedVia = () =>
+  world.calls.filter((c) => c[0] === "herdr" && (c[1] === "pane" || c[1] === "tab") && c[2] === "close");
 
 beforeEach(async () => {
   state = withState();
@@ -99,7 +110,9 @@ test("a lane-owned worktree whose git state is unreadable still blocks the close
   world.isGitRepo = "false";
   await claimDone(at(T0), lane, "merged acme/app#1");
   await watchTick(at(T0 + 6 * MIN));
-  expect((await at(T0).registry.read("demo-lane"))?.objection?.reasons).toEqual([`unpushed work in ${WT} (git state unreadable)`]);
+  expect((await at(T0).registry.read("demo-lane"))?.objection?.reasons).toEqual([
+    `unpushed work in ${WT} (git state unreadable)`,
+  ]);
   expect(closedVia()).toHaveLength(0);
 });
 
@@ -177,7 +190,18 @@ test("an agent suspended with Ctrl+Z is still reported idle, but the shell is in
 });
 
 test("an agent with a non-interactive sh -c child in front is delivered to; an empty foreground group is doubt", async () => {
-  world.panes = [{ pane_id: "w:p1", workspace_id: "w", agent: "pi", agent_status: "idle", foreground: [{ name: "pi", argv: ["pi"] }, { name: "sh", argv: ["sh", "-c", "true"] }] }];
+  world.panes = [
+    {
+      pane_id: "w:p1",
+      workspace_id: "w",
+      agent: "pi",
+      agent_status: "idle",
+      foreground: [
+        { name: "pi", argv: ["pi"] },
+        { name: "sh", argv: ["sh", "-c", "true"] },
+      ],
+    },
+  ];
   world.onEnterStatus = "working";
   expect(await sendVerified(at(T0).run, at(T0).clock, "w:p1", "[LEAD] one")).toBe("delivered");
   world.panes = [{ pane_id: "w:p1", workspace_id: "w", agent: "pi", agent_status: "idle", foreground: [] }];

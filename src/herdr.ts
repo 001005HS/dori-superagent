@@ -15,7 +15,10 @@ export const spawnExec: Exec = async (cmd, argv) => {
 };
 
 export class HerdrError extends Error {
-  constructor(readonly argv: readonly string[], readonly result: ExecResult) {
+  constructor(
+    readonly argv: readonly string[],
+    readonly result: ExecResult,
+  ) {
     super(`herdr ${argv.join(" ")} failed (${result.code}): ${(result.stderr || result.stdout).trim()}`);
   }
 }
@@ -25,7 +28,11 @@ export class HerdrError extends Error {
  * it twice. `typed`: the text is in the pane's input and only the Enter that submits it is missing.
  */
 export class DeliveryUncertain extends Error {
-  constructor(readonly failure: unknown, readonly typed: boolean, readonly agent?: AgentIdentity) {
+  constructor(
+    readonly failure: unknown,
+    readonly typed: boolean,
+    readonly agent?: AgentIdentity,
+  ) {
     super(failure instanceof Error ? failure.message : String(failure));
   }
 }
@@ -70,9 +77,29 @@ export function omoScreenIdle(screen: string): boolean {
 }
 
 const SHELLS: ReadonlySet<string> = new Set([
-  "sh", "ash", "bash", "zsh", "fish", "dash", "ksh", "mksh", "tcsh", "csh", "nu", "elvish", "xonsh", "pwsh", "powershell", "busybox",
+  "sh",
+  "ash",
+  "bash",
+  "zsh",
+  "fish",
+  "dash",
+  "ksh",
+  "mksh",
+  "tcsh",
+  "csh",
+  "nu",
+  "elvish",
+  "xonsh",
+  "pwsh",
+  "powershell",
+  "busybox",
 ]);
-const baseName = (value: unknown): string => String(value ?? "").replace(/^-/, "").split("/").pop()!.toLowerCase();
+const baseName = (value: unknown): string =>
+  String(value ?? "")
+    .replace(/^-/, "")
+    .split("/")
+    .pop()!
+    .toLowerCase();
 // A shell runs a command (not a prompt) only with an explicit command flag: -c, also inside combined short flags such
 // as -lc, or PowerShell's -Command/-File/-EncodedCommand (whole words only: its other long flags contain a 'c'). Any other operand (a script path, --rcfile FILE, -o OPT) stays held.
 const runsCommand = (shell: string, arg: string): boolean =>
@@ -81,7 +108,8 @@ const runsCommand = (shell: string, arg: string): boolean =>
     : /^-[A-Za-z]*c[A-Za-z]*$/.test(arg);
 // PowerShell's -NoExit (any prefix it accepts: -noe, -noex, -noexi, -noexit, one or two dashes) keeps an interactive
 // prompt after the command runs, so that shell is held.
-const keepsPrompt = (shell: string, arg: string): boolean => (shell === "pwsh" || shell === "powershell") && /^--?noe(x(i(t)?)?)?$/i.test(arg);
+const keepsPrompt = (shell: string, arg: string): boolean =>
+  (shell === "pwsh" || shell === "powershell") && /^--?noe(x(i(t)?)?)?$/i.test(arg);
 
 /**
  * True when `pane process-info` shows an interactive shell in the pane's foreground process group, or cannot be read.
@@ -126,7 +154,12 @@ export class Herdr {
     return toPaneRef(r["root_pane"]);
   }
 
-  async createTab(label: string, cwd: string, workspaceId?: string, env: Record<string, string> = {}): Promise<PaneRef> {
+  async createTab(
+    label: string,
+    cwd: string,
+    workspaceId?: string,
+    env: Record<string, string> = {},
+  ): Promise<PaneRef> {
     const argv = ["tab", "create", "--label", label, "--cwd", cwd, "--no-focus"];
     if (workspaceId) argv.push("--workspace", workspaceId);
     for (const [k, v] of Object.entries(env)) argv.push("--env", `${k}=${v}`);
@@ -161,7 +194,10 @@ export class Herdr {
     if (!pane) return { status: "gone" };
     if (!pane["agent"]) return { status: "shell" };
     const s = String(pane["agent_status"] ?? "unknown");
-    return { status: (["idle", "working", "blocked", "done"].includes(s) ? s : "unknown") as AgentStatus, agent: String(pane["agent"]) };
+    return {
+      status: (["idle", "working", "blocked", "done"].includes(s) ? s : "unknown") as AgentStatus,
+      agent: String(pane["agent"]),
+    };
   }
 
   /**
@@ -180,7 +216,8 @@ export class Herdr {
       // with `pane run` is detected but refused. Fall back to typing the text and pressing Enter.
       // Match herdr's own output, never e.message: that carries argv, which includes the delivered text.
       // Any other failure (a timeout, say) may come after herdr handed the prompt over: it is ambiguous.
-      if (!(e instanceof HerdrError) || !/agent_not_ready/.test(e.result.stderr || e.result.stdout)) throw new DeliveryUncertain(e, false);
+      if (!(e instanceof HerdrError) || !/agent_not_ready/.test(e.result.stderr || e.result.stdout))
+        throw new DeliveryUncertain(e, false);
       // agent_not_ready also covers an agent that exited and left a shell in front: typing would run the text there.
       // Re-read right before typing (#66): only a pane that still has an agent gets keystrokes.
       const { status: st, agent } = await this.paneAgent(paneId);
@@ -261,7 +298,16 @@ export class Herdr {
 
   async read(paneId: string, lines = 80): Promise<string> {
     const full = this.session ? ["--session", this.session] : [];
-    const res = await this.exec("herdr", [...full, "pane", "read", paneId, "--lines", String(lines), "--source", "recent"]);
+    const res = await this.exec("herdr", [
+      ...full,
+      "pane",
+      "read",
+      paneId,
+      "--lines",
+      String(lines),
+      "--source",
+      "recent",
+    ]);
     if (res.code !== 0) throw new HerdrError(["pane", "read", paneId], res);
     return res.stdout;
   }

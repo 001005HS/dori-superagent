@@ -29,7 +29,9 @@ describe("lanes", () => {
   test("start refuses the role names lead and duty as lane keys before it writes or opens anything", async () => {
     const { w, d, lead, brief } = setup();
     for (const key of ["lead", "duty"]) {
-      await expect(startLane(d, key, brief, { workspace: "w1" })).rejects.toThrow(`lane key "${key}" is reserved for the ${key} role`);
+      await expect(startLane(d, key, brief, { workspace: "w1" })).rejects.toThrow(
+        `lane key "${key}" is reserved for the ${key} role`,
+      );
       expect(d.store.lane(key)).toBeUndefined();
       expect(existsSync(d.store.briefPath(key))).toBe(false);
     }
@@ -127,7 +129,10 @@ describe("duty loop", () => {
     const lane = await startLane(d, "quiet", brief, { workspace: "w1" });
     const pane = w.panes.get(lane.paneId)!;
     pane.status = "idle";
-    const at = async (min: number) => { w.clock = lane.createdAt + min * 60_000; return dutyTick(d); };
+    const at = async (min: number) => {
+      w.clock = lane.createdAt + min * 60_000;
+      return dutyTick(d);
+    };
     expect(await at(5)).toEqual([]);
     expect(await at(10)).toContainEqual({ lane: "quiet", action: "nudge-1" });
     expect(pane.received.at(-1)).toContain("idle for 10 minutes");
@@ -151,7 +156,11 @@ describe("duty loop", () => {
     d.store.enqueue("w1:p9", { at: w.clock, from: "cli", text: "to broken" });
     d.store.enqueue("w1:p1", { at: w.clock, from: "cli", text: "to lead" });
     const events = await dutyTick(d);
-    expect(events).toContainEqual({ pane: "w1:p9", action: "delivery-ambiguous", detail: expect.stringContaining("herdr exploded") });
+    expect(events).toContainEqual({
+      pane: "w1:p9",
+      action: "delivery-ambiguous",
+      detail: expect.stringContaining("herdr exploded"),
+    });
     expect(events).toContainEqual({ pane: "w1:p1", action: "flushed" });
     expect(lead.received.filter((m) => m.includes("to lead"))).toHaveLength(1);
     // The held batch is reported to the lead once (#111); the test is about the other pane still flushing, not about
@@ -172,8 +181,16 @@ describe("duty loop", () => {
     w.promptFails.set(stuck.paneId, "stuck exploded");
     w.clock = fine.createdAt + 10 * 60_000;
     const events = await dutyTick(d);
-    expect(events).toContainEqual({ lane: "lost-lane", action: "lane-failed", detail: expect.stringContaining("lead exploded") });
-    expect(events).toContainEqual({ lane: "stuck-lane", action: "lane-failed", detail: expect.stringContaining("stuck exploded") });
+    expect(events).toContainEqual({
+      lane: "lost-lane",
+      action: "lane-failed",
+      detail: expect.stringContaining("lead exploded"),
+    });
+    expect(events).toContainEqual({
+      lane: "stuck-lane",
+      action: "lane-failed",
+      detail: expect.stringContaining("stuck exploded"),
+    });
     expect(events).toContainEqual({ lane: "fine-lane", action: "nudge-1" });
     expect(w.panes.get(fine.paneId)!.received.at(-1)).toContain("idle for 10 minutes");
   });
@@ -185,7 +202,11 @@ describe("duty loop", () => {
     w.panes.delete(gone.paneId);
     w.promptFails.set("w1:p1", '{"error":{"code":"agent_not_ready"}}');
     w.keyFails = 3;
-    expect(await dutyTick(d)).toContainEqual({ lane: "gone-lane", action: "lane-failed", detail: expect.stringContaining("key press failed") });
+    expect(await dutyTick(d)).toContainEqual({
+      lane: "gone-lane",
+      action: "lane-failed",
+      detail: expect.stringContaining("key press failed"),
+    });
     expect(lead.received.filter((m) => m.includes("[LOST gone-lane]"))).toHaveLength(1);
     const events = await dutyTick(d);
     expect(events).toContainEqual({ pane: "w1:p1", action: "flushed" });
@@ -256,7 +277,9 @@ describe("duty loop", () => {
   test("duty refuses an --interval under a millisecond before it runs a tick", async () => {
     const { w, d } = setup();
     for (const bad of ["abc", "0", "-5", "30s", "0.0005", "1e-9"]) {
-      await expect(main(["duty", "--once", "--interval", bad], d)).rejects.toThrow("--interval must be a number of seconds, 0.001 or more");
+      await expect(main(["duty", "--once", "--interval", bad], d)).rejects.toThrow(
+        "--interval must be a number of seconds, 0.001 or more",
+      );
     }
     expect(w.dutyCounts).toEqual([]);
     for (const good of ["0.001", "0.5"]) expect(await main(["duty", "--once", "--interval", good], d)).toBe(0);
@@ -299,15 +322,22 @@ describe("review + merge gate", () => {
     await review(d, "o/r#7", "some/model");
     expect(d.store.receipt("o/r#7", head)!.model).toBe("some/model");
     await expect(mergeGate(d, "o/r#7")).rejects.toThrow("never green");
-    gh(w, [{ name: "test", bucket: "fail" }, { name: "lint", bucket: "pass" }]);
+    gh(w, [
+      { name: "test", bucket: "fail" },
+      { name: "lint", bucket: "pass" },
+    ]);
     await expect(mergeGate(d, "o/r#7")).rejects.toThrow("test=fail");
     gh(w, [{ name: "test", bucket: "skipping" }]);
     await expect(mergeGate(d, "o/r#7")).rejects.toThrow("every check was skipped");
-    gh(w, [{ name: "test", bucket: "pass" }, { name: "docs", bucket: "skipping" }]);
+    gh(w, [
+      { name: "test", bucket: "pass" },
+      { name: "docs", bucket: "skipping" },
+    ]);
     expect(await mergeGate(d, "o/r#7")).toBe(`MERGED o/r#7 head=${head}`);
     expect(w.calls.at(-1)!.argv).toContain("--match-head-commit");
-    expect(w.usage.filter((e) => e.name === "dori.merge_decided").map((e) => (e as { outcome: string }).outcome))
-      .toEqual(["no_receipt", "review_block", "no_checks", "checks_red", "checks_all_skipped", "merged"]);
+    expect(
+      w.usage.filter((e) => e.name === "dori.merge_decided").map((e) => (e as { outcome: string }).outcome),
+    ).toEqual(["no_receipt", "review_block", "no_checks", "checks_red", "checks_all_skipped", "merged"]);
     expect(w.usage.filter((e) => e.name === "dori.review_completed")).toHaveLength(2);
   });
 
@@ -316,7 +346,10 @@ describe("review + merge gate", () => {
     gh(w, []);
     const lines = Array.from({ length: 205 }, (_, i) => `line-${i + 1}`);
     w.reviewer = () => ({ code: 0, stdout: lines.join("\n") });
-    const failure: unknown = await review(d, "o/r#8").then(() => undefined, (e: unknown) => e);
+    const failure: unknown = await review(d, "o/r#8").then(
+      () => undefined,
+      (e: unknown) => e,
+    );
     expect(failure).toBeInstanceOf(Error);
     const files = readdirSync(join(d.store.root, "receipts")).filter((n) => n.endsWith(".noverdict.txt"));
     expect(files).toHaveLength(1);
@@ -335,7 +368,10 @@ describe("review + merge gate", () => {
     const { w, d } = setup();
     gh(w, []);
     w.reviewer = () => ({ code: 9, stdout: "partial reviewer output" });
-    const failure: unknown = await review(d, "o/r#9").then(() => undefined, (e: unknown) => e);
+    const failure: unknown = await review(d, "o/r#9").then(
+      () => undefined,
+      (e: unknown) => e,
+    );
     expect(failure).toBeInstanceOf(Error);
     const files = readdirSync(join(d.store.root, "receipts")).filter((n) => n.endsWith(".noverdict.txt"));
     expect(files).toHaveLength(1);

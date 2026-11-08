@@ -57,7 +57,13 @@ export type Lane = {
 
 export const statusOf = (lane: Lane): LaneStatus => (lane.closedAt ? "closed" : (lane.status ?? "working"));
 
-export const withStatus = (lane: Lane, status: LaneStatus, note: string, at: string, patch: Partial<Lane> = {}): Lane => ({
+export const withStatus = (
+  lane: Lane,
+  status: LaneStatus,
+  note: string,
+  at: string,
+  patch: Partial<Lane> = {},
+): Lane => ({
   ...lane,
   ...patch,
   status,
@@ -90,7 +96,9 @@ export class Registry {
   // Reading never creates the lanes directory (dori boot is read-only); write() creates it.
   private files(): string[] {
     try {
-      return readdirSync(this.dir).filter((f) => f.endsWith(".json")).map((f) => join(this.dir, f));
+      return readdirSync(this.dir)
+        .filter((f) => f.endsWith(".json"))
+        .map((f) => join(this.dir, f));
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === "ENOENT") return [];
       throw e;
@@ -110,7 +118,8 @@ export class Registry {
     for (const f of this.files()) {
       try {
         const lane: unknown = await Bun.file(f).json();
-        if (typeof lane !== "object" || lane === null || !("key" in lane) || typeof lane.key !== "string") throw new Error("not a lane record");
+        if (typeof lane !== "object" || lane === null || !("key" in lane) || typeof lane.key !== "string")
+          throw new Error("not a lane record");
         lanes.push(lane as Lane);
       } catch {
         unreadable.push(f);

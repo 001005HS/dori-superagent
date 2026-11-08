@@ -5,7 +5,12 @@ import { join } from "node:path";
 import type { Http, HttpRequest, HttpResponse } from "../src/messenger/http.ts";
 import type { TgInbound } from "../src/messenger/telegram-inbound.ts";
 import { Telegram } from "../src/messenger/telegram.ts";
-import { envInt, fileTgInboundStore, pollTelegramInbound, telegramInboundLoop } from "../src/messenger/telegram-inbound.ts";
+import {
+  envInt,
+  fileTgInboundStore,
+  pollTelegramInbound,
+  telegramInboundLoop,
+} from "../src/messenger/telegram-inbound.ts";
 import { fakeClock, withState } from "./fakes.ts";
 
 const OWNER = 5250;
@@ -47,7 +52,15 @@ test("owner DMs pass, non-owner and bot messages drop, offset still advances", a
     [
       { update_id: 10, message: msg(OWNER, OWNER, "private", "hi") },
       { update_id: 11, message: msg(OTHER, OTHER, "private", "intruder") },
-      { update_id: 12, message: { message_id: 1, from: { id: 777, is_bot: true }, chat: { id: OWNER, type: "private" }, text: "bot ping" } },
+      {
+        update_id: 12,
+        message: {
+          message_id: 1,
+          from: { id: 777, is_bot: true },
+          chat: { id: OWNER, type: "private" },
+          text: "bot ping",
+        },
+      },
     ],
   ]);
   const store = fileTgInboundStore(join(state.dir, "tg-off-1"));
@@ -111,14 +124,19 @@ test("a private chat run with topics carries the topic on DMs", async () => {
 });
 
 test("without a configured group only DMs arrive", async () => {
-  const { http } = telegramFake([[{ update_id: 50, message: msg(OWNER, GROUP, "supergroup", "group msg", TOPIC, true) }]]);
+  const { http } = telegramFake([
+    [{ update_id: 50, message: msg(OWNER, GROUP, "supergroup", "group msg", TOPIC, true) }],
+  ]);
   const store = fileTgInboundStore(join(state.dir, "tg-off-5"));
   const out = await pollTelegramInbound(mk(http), store, { ownerId: OWNER });
   expect(out.length).toBe(0);
 });
 
 test("restart resumes from the persisted offset", async () => {
-  const { http, bodies } = telegramFake([[], [{ update_id: 60, message: msg(OWNER, OWNER, "private", "after restart") }]]);
+  const { http, bodies } = telegramFake([
+    [],
+    [{ update_id: 60, message: msg(OWNER, OWNER, "private", "after restart") }],
+  ]);
   const store = fileTgInboundStore(join(state.dir, "tg-off-6"));
   store.save(60); // what a previous run persisted
   const first = await pollTelegramInbound(mk(http), store, { ownerId: OWNER });
@@ -191,7 +209,17 @@ test("edited messages arrive as their own edit kind with the edited text", async
 
 test("a voice note identifies its media so transcribe can fetch it", async () => {
   const { http } = telegramFake([
-    [{ update_id: 100, message: { message_id: 55, from: { id: OWNER, is_bot: false, username: "owner" }, chat: { id: OWNER, type: "private" }, voice: { file_id: "FID_VOICE", duration: 9 } } }],
+    [
+      {
+        update_id: 100,
+        message: {
+          message_id: 55,
+          from: { id: OWNER, is_bot: false, username: "owner" },
+          chat: { id: OWNER, type: "private" },
+          voice: { file_id: "FID_VOICE", duration: 9 },
+        },
+      },
+    ],
   ]);
   const store = fileTgInboundStore(join(state.dir, "tg-off-10"));
   const out = await pollTelegramInbound(mk(http), store, { ownerId: OWNER });
@@ -204,7 +232,18 @@ test("a voice note identifies its media so transcribe can fetch it", async () =>
 
 test("a photo with a caption carries both the text and the largest photo", async () => {
   const { http } = telegramFake([
-    [{ update_id: 110, message: { message_id: 56, from: { id: OWNER, is_bot: false, username: "owner" }, chat: { id: OWNER, type: "private" }, photo: [{ file_id: "SMALL" }, { file_id: "LARGE" }], caption: "look at this" } }],
+    [
+      {
+        update_id: 110,
+        message: {
+          message_id: 56,
+          from: { id: OWNER, is_bot: false, username: "owner" },
+          chat: { id: OWNER, type: "private" },
+          photo: [{ file_id: "SMALL" }, { file_id: "LARGE" }],
+          caption: "look at this",
+        },
+      },
+    ],
   ]);
   const store = fileTgInboundStore(join(state.dir, "tg-off-11"));
   const out = await pollTelegramInbound(mk(http), store, { ownerId: OWNER });
@@ -237,7 +276,9 @@ test("an unparseable offset warns once across several polls and restarts from 0"
 
 test("envInt refuses empty, whitespace, 1e3 and 0x10; accepts plain integers", () => {
   for (const v of ["", "   ", "1e3", "0x10", "12.5", "abc", "99999999999999999999"]) {
-    expect(() => envInt("DORI_TELEGRAM_OWNER_ID", v)).toThrow(`DORI_TELEGRAM_OWNER_ID must be an integer, got: ${JSON.stringify(v)}`);
+    expect(() => envInt("DORI_TELEGRAM_OWNER_ID", v)).toThrow(
+      `DORI_TELEGRAM_OWNER_ID must be an integer, got: ${JSON.stringify(v)}`,
+    );
   }
   expect(() => envInt("DORI_TELEGRAM_OWNER_ID", undefined)).toThrow("DORI_TELEGRAM_OWNER_ID is not set");
   expect(envInt("DORI_TELEGRAM_OWNER_ID", " 42 ")).toBe(42);
@@ -247,7 +288,9 @@ test("envInt refuses empty, whitespace, 1e3 and 0x10; accepts plain integers", (
 
 test("one-shot (no --loop) returns after a single bounded poll under continuous traffic", async () => {
   // Continuous traffic: every poll would return another message if polled again.
-  const { http } = telegramFake(Array.from({ length: 20 }, (_, i) => [{ update_id: 100 + i, message: msg(OWNER, OWNER, "private", `msg ${i}`) }]));
+  const { http } = telegramFake(
+    Array.from({ length: 20 }, (_, i) => [{ update_id: 100 + i, message: msg(OWNER, OWNER, "private", `msg ${i}`) }]),
+  );
   const store = fileTgInboundStore(join(state.dir, "tg-off-oneshot"));
   const out: TgInbound[] = [];
   await telegramInboundLoop(mk(http), store, { ownerId: OWNER }, 0, (i) => out.push(i));
@@ -257,10 +300,7 @@ test("one-shot (no --loop) returns after a single bounded poll under continuous 
 });
 
 test("--loop re-polls immediately after a productive poll and sleeps only when idle", async () => {
-  const { http } = telegramFake([
-    [{ update_id: 200, message: msg(OWNER, OWNER, "private", "burst") }],
-    [],
-  ]);
+  const { http } = telegramFake([[{ update_id: 200, message: msg(OWNER, OWNER, "private", "burst") }], []]);
   const store = fileTgInboundStore(join(state.dir, "tg-off-loop"));
   const out: TgInbound[] = [];
   const sleeps: number[] = [];
