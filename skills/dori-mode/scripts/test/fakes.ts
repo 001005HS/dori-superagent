@@ -6,6 +6,7 @@ import { type DoriConfig, defaultConfig } from "../src/config.ts";
 import type { FlowDeps } from "../src/done-flow.ts";
 import { Registry } from "../src/registry.ts";
 import type { Clock, Ran, Runner } from "../src/run.ts";
+import { type HcTerm, hcAnswer } from "./hc-runner.ts";
 
 export type World = {
   prState: string;
@@ -32,6 +33,8 @@ export type World = {
   onEnterStatus?: string;
   /** Screens returned by successive reads; falls back to `screen` when empty. */
   screens?: string[];
+  /** hc terminals by address, for lanes on the hc runtime. */
+  terminals: Record<string, HcTerm>;
   calls: string[][];
 };
 
@@ -45,6 +48,7 @@ export const newWorld = (): World => ({
   stuckReads: 0,
   screen: "❯ ",
   panes: [],
+  terminals: {},
   calls: [],
 });
 
@@ -67,6 +71,13 @@ export const fakeRunner =
       return ok();
     }
     if (cmd === "herdr" && a1 === "pane" && a2 === "list") return ok(JSON.stringify({ result: { panes: w.panes } }));
+    if (cmd === "herdr" && a1 === "pane" && a2 === "get") {
+      const p = w.panes.find((x) => x.pane_id === argv[3]);
+      return p ? ok(JSON.stringify({ result: { pane: p } })) : { code: 1, out: "", err: "pane_not_found" };
+    }
+    // herdr refuses `agent prompt` for an agent it did not start itself (omo launched with `pane run`): typed fallback.
+    if (cmd === "herdr" && a1 === "agent" && a2 === "prompt") return { code: 1, out: "", err: "agent_not_ready" };
+    if (cmd === "hc") return hcAnswer(w, argv);
     if (cmd === "herdr" && a1 === "pane" && a2 === "process-info") {
       const p = w.panes.find((x) => x.pane_id === argv[4]);
       if (!p) return { code: 1, out: "", err: "pane_not_found" };
@@ -125,10 +136,15 @@ export const depsFor = (w: World, clock: Clock, stateDir: string, patch: Partial
     stateDir,
     defaultCwd: "/repo",
     leadPane: "lead:p1",
+    runtime: "herdr",
     ...patch,
   };
-  return { run: fakeRunner(w), clock, registry: new Registry(stateDir), config, exists: () => true };
+  return { run: fakeRunner(w), clock, registry: new Registry(stateDir), config, exists: () => true, env: {} };
 };
 
 export const sent = (w: World): string[] =>
   w.calls.filter((c) => c[0] === "herdr" && c[2] === "send-text").map((c) => c[4] ?? "");
+
+/** Texts delivered with `hc send` (the last argv element), in order. */
+export const hcSent = (w: World): string[] =>
+  w.calls.filter((c) => c[0] === "hc" && c[2] === "send").map((c) => c.at(-1) ?? "");

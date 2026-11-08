@@ -152,7 +152,7 @@ test("a retry after a failed tab create ships the same brief, not a second lesso
           : { code: 0, out: JSON.stringify({ result: { root_pane: { pane_id: "qa:p1" }, tab_id: "qa:t1" } }), err: "" }
         : deps.run(argv, opts);
     // When the first launch fails and the lead runs it again.
-    await expect(launchLane({ ...deps, run }, input)).rejects.toThrow("herdr tab create failed");
+    await expect(launchLane({ ...deps, run }, input)).rejects.toThrow("session create failed");
     await launchLane({ ...deps, run }, input);
     // Then the shipped brief is the one a first launch would have shipped.
     expect(readFileSync(brief, "utf8")).toBe(expected);
@@ -184,7 +184,7 @@ test("a brief that quotes the footer heading mid-file is shipped whole on first 
           : { code: 0, out: JSON.stringify({ result: { root_pane: { pane_id: "qa:p1" }, tab_id: "qa:t1" } }), err: "" }
         : deps.run(argv, opts);
     // When that launch fails and the lead runs it again.
-    await expect(launchLane({ ...deps, run }, input)).rejects.toThrow("herdr tab create failed");
+    await expect(launchLane({ ...deps, run }, input)).rejects.toThrow("session create failed");
     await launchLane({ ...deps, run }, input);
     // Then the retry ships the first launch's brief: the owner text whole, one lessons block and one dori footer.
     const shipped = readFileSync(brief, "utf8");

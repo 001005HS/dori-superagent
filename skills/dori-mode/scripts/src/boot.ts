@@ -3,13 +3,15 @@ import { join } from "node:path";
 
 import type { FlowDeps } from "./done-flow.ts";
 import { shellQuote } from "./launch.ts";
-import { listPanes, type Pane } from "./panes.ts";
+import type { SessionInfo } from "../../../../src/runtime/types.ts";
 import type { Slack } from "./messenger/slack.ts";
 import { type Lane, statusOf } from "./registry.ts";
+import { reconcilePanes } from "./reconcile.ts";
+import { runtimesOf } from "./run.ts";
+import { listSessions } from "./sessions.ts";
 import { type ProgressState, ReportError, type Reports } from "./reports.ts";
 import { type Worklog, worklogLines } from "./worklog.ts";
 
-export type PaneState = "live" | "vanished" | "unassigned";
 export type Monitor = {
   readonly monitorId?: string;
   readonly sessionId?: string;
@@ -40,7 +42,7 @@ export type Cleanup = {
   readonly stop: string;
 };
 export type SlackCheck = () => Promise<{ readonly userId: string; readonly teamId: string } | null>;
-export type BootDeps = Pick<FlowDeps, "run" | "registry" | "config" | "clock"> & {
+export type BootDeps = Pick<FlowDeps, "run" | "registry" | "config" | "clock" | "rts" | "env"> & {
   readonly reports: Reports;
   readonly worklog: Worklog;
   /** null when no Slack token is configured; boot then skips the check. */
@@ -70,24 +72,6 @@ export const slackAuthCheck =
       throw new Error("auth.test returned no user_id or team_id");
     return { userId: auth["user_id"], teamId: auth["team_id"] };
   };
-
-export const reconcilePanes = (
-  lanes: readonly Lane[],
-  panes: readonly Pane[],
-): { lanes: { key: string; status: string; pane: string | null; paneState: PaneState }[]; unregistered: string[] } => {
-  const live = new Set(panes.map((pane) => pane.pane_id));
-  // A closed lane owns no pane: one left open by a failed close is unregistered, as in sync.
-  const registered = new Set(lanes.flatMap((lane) => (lane.pane && statusOf(lane) !== "closed" ? [lane.pane] : [])));
-  return {
-    lanes: lanes.map((lane) => ({
-      key: lane.key,
-      status: statusOf(lane),
-      pane: lane.pane ?? null,
-      paneState: !lane.pane ? "unassigned" : live.has(lane.pane) ? "live" : "vanished",
-    })),
-    unregistered: panes.filter((pane) => !registered.has(pane.pane_id)).map((pane) => pane.pane_id),
-  };
-};
 
 // Loose: any mention of a name, prose and paths included. Used only to keep a watch that might belong to an open lane.
 // A colon or a period next to the name is punctuation ("lane:api-release", "api-release.") unless the period joins
@@ -210,6 +194,12 @@ export const readMonitorManifests = (
 export const bootCheck = async (deps: BootDeps): Promise<{ exitCode: number; lines: string[] }> => {
   const lines: string[] = [];
   let failed = false;
+  const rts = runtimesOf(deps);
+  if (rts.choice) lines.push(`RUNTIME ${rts.choice.kind} (from ${rts.choice.source})`);
+  else {
+    failed = true;
+    lines.push(`RUNTIME unavailable: ${rts.failure?.message ?? "no runtime chosen"}`);
+  }
   const lanes: BootLane[] = [];
   const journals: string[] = [];
   // An unreadable lane file, or a lanes path that cannot be listed, is named; the other lanes and checks still run.
@@ -261,12 +251,12 @@ export const bootCheck = async (deps: BootDeps): Promise<{ exitCode: number; lin
     }
   }
   // A failed pane list is not an empty one: never call every lane vanished.
-  let panes: Pane[] | null = null;
+  let panes: SessionInfo[] | null = null;
   try {
-    panes = await listPanes(deps.run);
+    panes = await listSessions(rts, { lanes: registered });
   } catch {
     failed = true;
-    lines.push("PANES unavailable (herdr pane list failed)");
+    lines.push("PANES unavailable (session list failed)");
   }
   if (panes) {
     const result = reconcilePanes(lanes, panes);
@@ -275,7 +265,7 @@ export const bootCheck = async (deps: BootDeps): Promise<{ exitCode: number; lin
     const done = new Set(lanes.filter(finished).map((lane) => lane.key));
     const vanished = result.lanes.filter((lane) => lane.paneState === "vanished" && !done.has(lane.key));
     lines.push(
-      `PANES lead=${lead || "unconfigured"} leadState=${panes.some((p) => p.pane_id === lead) ? "live" : "missing"} registeredLive=${result.lanes.filter((l) => l.paneState === "live" && l.status !== "closed").length} vanished=${vanished.length} unregistered=${result.unregistered.length}`,
+      `PANES lead=${lead || "unconfigured"} leadState=${panes.some((p) => p.ref.id === lead) ? "live" : "missing"} registeredLive=${result.lanes.filter((l) => l.paneState === "live" && l.status !== "closed").length} vanished=${vanished.length} unregistered=${result.unregistered.length}`,
     );
     for (const lane of vanished)
       lines.push(
