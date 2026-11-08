@@ -28,6 +28,7 @@ Dori は [Sisyphus Labs](https://sisyphuslabs.ai) のマルチセッション向
 | 次の仕事を自分で見つける | 毎時のループが backlog から取り出し、lane 数とホストの制限を守り、人には判断だけを聞く | `src/loop.ts`、[docs/hourly-loop.md](docs/hourly-loop.md) |
 | 状況が一箇所に残る | ジョブごとにメッセージ一つを、投稿し直さずその場で編集する | `skills/dori-mode/scripts/src/messenger/` の `edit` |
 | 声は一つ | lane と duty セッションはあなたに話しかけず、すべて lead に集まる | `prompts/lead.md`、`prompts/duty.md` |
+| あなたの書き方で返す | 書くものに絵文字は使わず、短く、そのスレッドの言語で返します | `skills/dori-mode/SKILL.md` |
 
 ![architecture](docs/architecture.png)
 

@@ -28,6 +28,7 @@ Due programmi si chiamano `dori`, e questo repository li distribuisce entrambi. 
 | Trova da solo il prossimo lavoro | il ciclo orario pesca da un backlog, rispetta i limiti di lane e di host e ti chiede solo le decisioni | `src/loop.ts`, [docs/hourly-loop.md](docs/hourly-loop.md) |
 | Stato in un posto solo | un messaggio per richiesta, modificato sul posto invece di essere ripubblicato | `edit` in `skills/dori-mode/scripts/src/messenger/` |
 | Una voce sola | le lane e la sessione duty non parlano mai con te, tutto arriva al lead | `prompts/lead.md`, `prompts/duty.md` |
+| Risponde come scrivi tu | niente emoji in ciò che scrive, messaggi brevi, la lingua del thread | `skills/dori-mode/SKILL.md` |
 
 ![architecture](docs/architecture.png)
 

@@ -28,6 +28,7 @@ Two programs share the name `dori`, and this repository ships both. Install one 
 | It finds the next task itself | the hourly loop pulls from a backlog, respects lane and host limits, and asks you only for decisions | `src/loop.ts`, [docs/hourly-loop.md](docs/hourly-loop.md) |
 | Status that stays in one place | one message per job, edited in place instead of re-posted | `edit` in `skills/dori-mode/scripts/src/messenger/` |
 | One voice | lanes and the duty session never talk to you; everything reaches the lead | `prompts/lead.md`, `prompts/duty.md` |
+| Replies the way you write | no emojis in what it writes, short messages, the language of the thread | `skills/dori-mode/SKILL.md` |
 
 ![architecture](docs/architecture.png)
 

@@ -28,6 +28,7 @@ Dori 是 [Sisyphus Labs](https://sisyphuslabs.ai) 的多会话编程 Agent harne
 | 自己找下一件事 | 每小时循环从 backlog 取活，遵守 lane 数和主机上限，只把需要决策的事问你 | `src/loop.ts`、[docs/hourly-loop.md](docs/hourly-loop.md) |
 | 状态只有一个地方 | 每个任务一条消息，就地编辑，不重复刷屏 | `skills/dori-mode/scripts/src/messenger/` 里的 `edit` |
 | 只有一个声音 | lane 和 duty 会话都不直接跟你说话，一切都汇到 lead | `prompts/lead.md`、`prompts/duty.md` |
+| 按你的写法回答 | 写出来的内容不用 emoji，句子短，用该话题的语言 | `skills/dori-mode/SKILL.md` |
 
 ![architecture](docs/architecture.png)
 

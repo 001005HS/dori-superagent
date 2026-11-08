@@ -28,6 +28,7 @@ Dori는 [Sisyphus Labs](https://sisyphuslabs.ai)가 만든 멀티 세션 코딩 
 | 다음 일을 스스로 찾음 | 매시간 루프가 백로그에서 꺼내고, 레인 수와 호스트 한도를 지키고, 사람에게는 결정만 묻습니다 | `src/loop.ts`, [docs/hourly-loop.md](docs/hourly-loop.md) |
 | 상태가 한곳에 남음 | 일마다 메시지 하나를, 다시 올리지 않고 그 자리에서 고칩니다 | `skills/dori-mode/scripts/src/messenger/`의 `edit` |
 | 목소리는 하나 | 레인과 듀티 세션은 사용자에게 말하지 않고, 모든 것이 리드로 모입니다 | `prompts/lead.md`, `prompts/duty.md` |
+| 사용자가 쓰는 방식으로 답함 | 쓰는 글에는 이모지를 쓰지 않고, 짧게, 그 스레드의 언어로 답합니다 | `skills/dori-mode/SKILL.md` |
 
 ![architecture](docs/architecture.png)
 
