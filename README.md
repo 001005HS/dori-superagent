@@ -120,6 +120,8 @@ That clones this repository to `~/.dori/src`, links the skill into `~/.agents/sk
 
 ## Quickstart
 
+With both herdr and hc installed, pick one once by putting `{ "runtime": "hc" }` (or `"herdr"`) in `~/.dori/config.json`; the refs below are herdr's, and on hc they read `hc:t1`.
+
 Start herdr's server, then bring the harness up:
 
 ```sh
@@ -188,6 +190,30 @@ State is JSON on disk under `~/.dori` (or `$DORI_HOME`): `lanes/`, `inbox/`, `br
 
 `hooks.reviewCommand` in `~/.dori/config.json` replaces the built-in reviewer with your own command, which must print the same `VERDICT:` line.
 
+## Runtimes
+
+Sessions run on herdr or on hc ([herdr-core](https://releases.herdr.dev/core/install.sh)), and one home can hold sessions on both. The harness talks to them through one interface in `src/runtime/`, and every stored lane and role remembers which runtime opened it, so commands on it go there whatever runtime is selected. Lane records from before runtimes existed read as herdr. The full design, with the verb-by-verb mapping, is in [`docs/runtime.md`](docs/runtime.md).
+
+New sessions open on the runtime named by `DORI_RUNTIME`, else by `"runtime": "herdr"` or `"runtime": "hc"` in `$DORI_HOME/config.json` (default `~/.dori/config.json`, the same file Dori mode reads). With neither set, Dori detects it: inside an hc terminal (`HC_TERMINAL_ID`) it picks hc, inside a herdr pane (`HERDR_PANE_ID`) herdr, and otherwise the one binary on PATH. Both binaries or neither is refused with a one-line fix, since a guess would open sessions where nobody looks. `dori status` prints the choice first, as `RUNTIME hc (from config)`.
+
+On hc there are no workspaces or tabs. Dori opens one terminal per session and labels it `dori.group` (8 hex characters derived from the `DORI_HOME` path), `dori.role`, `dori.name` and, for lanes, `dori.lane`. `hc ls --label dori.group=<g>` lists one home's sessions, and `hc attach <t>` opens one.
+
+Status on hc comes only from the agent's own OSC 7501 report, and recent omo builds send it. An agent that never reports stays `unknown`, and messages to it wait in its inbox. Set `notes = false` in `~/.config/herdr-core/config.toml` so hc types nothing into a parent agent on its own. Only one duty loop runs per home on either runtime (`duty/lock`).
+
+Targets take `herdr:w1:p3`, `hc:t7`, a bare `w1:p3`, `lead`, `duty` or a lane key. A bare `t7` is a lane key, never an hc terminal.
+
+`dori migrate` moves sessions to the other runtime:
+
+```sh
+dori migrate --to hc --all --dry-run       # PLAN lines, nothing changes
+dori migrate --to hc --lane fix-flaky-login
+dori migrate --to herdr --role duty-loop
+```
+
+For an agent session it holds the lane, asks the agent for a handoff checkpoint, captures a handoff brief (brief, checkpoint, log tail, last screen lines, queued messages), opens the replacement on the brief, waits until it reports idle or working, moves the inbox with held entries still held, switches the record and closes the old session. Each session prints `MIGRATED`, `SKIP`, `DEFERRED` (the agent was blocked, or still working after `--wait-minutes`, default 10) or `MIGRATE_ROLLBACK`, which closes the replacement, puts the inbox back and exits 3. `--resume` reopens the agent's own session file in place of the brief, only for a live idle or done source with a recorded session path.
+
+Not supported: sessions on other machines (hc's `--on`), and a window layout on hc. hc on Windows is untested here.
+
 ## Command reference
 
 The harness, `src/cli.ts`:
@@ -250,6 +276,8 @@ bun run ci          # Biome, tsc, knip, the 250-line ratchet, then both suites
 ```
 
 Neither suite needs a model or the network: the harness runs against a fake herdr and a fake `gh`, and Dori mode against fake herdr, git and `gh`. Two end-to-end tests start a real herdr server and skip themselves when `herdr` is not on PATH.
+
+Two more cover hc. `test/e2e-hc.test.ts` starts a real hc core in its own `HC_SESSION` and XDG directories, with a fixture agent that reports OSC 7501 in place of omo, and `test/e2e-migrate.test.ts` moves a lane from herdr to hc. Each skips itself when its binary is not on PATH.
 
 ## Telemetry
 

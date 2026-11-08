@@ -120,6 +120,8 @@ curl -fsSL https://raw.githubusercontent.com/sisyphuslabs/dori-superagent/main/i
 
 ## クイックスタート
 
+herdr と hc の両方を入れた場合は、`~/.dori/config.json` に `{ "runtime": "hc" }`（または `"herdr"`）を書いてランタイムを一度選んでおいてください（以下の例は herdr の表記で、hc では `hc:t1` のようになります）。
+
 herdr のサーバーを起動してから、harness を立ち上げます。
 
 ```sh
@@ -188,6 +190,30 @@ receipt を書くのは `dori review` だけで、他の何も書きません。
 
 `~/.dori/config.json` の `hooks.reviewCommand` で、内蔵レビュアーを自前のコマンドに差し替えられます。同じ `VERDICT:` 行を出す必要があります。
 
+## ランタイム
+
+セッションは herdr でも hc（[herdr-core](https://releases.herdr.dev/core/install.sh)）でも動き、1 つのホームに両方のセッションを置けます。harness は `src/runtime/` の 1 つのインターフェースで両者を扱います。保存された lane とロールは自分を開いたランタイムを覚えているので、どのランタイムが選ばれていても、そのセッションへのコマンドは元のランタイムに届きます。ランタイムが導入される前の lane の記録は herdr として読みます。動詞ごとの対応表を含む設計の全体は [`docs/runtime.md`](docs/runtime.md) にあります。
+
+新しいセッションは `DORI_RUNTIME` が指すランタイムで開きます。なければ `$DORI_HOME/config.json`（既定は `~/.dori/config.json`。Dori mode が読むのと同じファイル）の `"runtime": "herdr"` または `"runtime": "hc"` に従います。どちらもなければ Dori が判定します。hc のターミナルの中（`HC_TERMINAL_ID`）なら hc、herdr のペインの中（`HERDR_PANE_ID`）なら herdr、それ以外は PATH にある唯一のバイナリです。両方のバイナリがある場合と、どちらもない場合は、直し方を 1 行で示して拒否します。推測で選ぶと、誰も見ていない場所にセッションが開くからです。`dori status` は最初の行に `RUNTIME hc (from config)` のように選択結果を出します。
+
+hc にはワークスペースもタブもありません。Dori はセッションごとにターミナルを 1 つ開き、ラベルを付けます。`dori.group`（`DORI_HOME` のパスから作る 16 進 8 文字）、`dori.role`、`dori.name`、lane なら `dori.lane` です。1 つのホームのセッションは `hc ls --label dori.group=<g>` で一覧でき、`hc attach <t>` で 1 つを開けます。
+
+hc での状態はエージェント自身の OSC 7501 の報告だけから来ます。最近の omo のビルドはこれを送ります。一度も報告しないエージェントは `unknown` のままで、そのエージェント宛てのメッセージは inbox で待ちます。`~/.config/herdr-core/config.toml` に `notes = false` を設定してください。hc が親エージェントに自分から何かを入力しなくなります。duty ループはどちらのランタイムでもホームごとに 1 つだけ動きます（`duty/lock`）。
+
+宛先には `herdr:w1:p3`、`hc:t7`、接頭辞なしの `w1:p3`、`lead`、`duty`、lane のキーを使います。接頭辞なしの `t7` は lane のキーで、hc のターミナルとしては読みません。
+
+`dori migrate` はセッションをもう一方のランタイムに移します。
+
+```sh
+dori migrate --to hc --all --dry-run       # PLAN 行だけを出し、何も変えない
+dori migrate --to hc --lane fix-flaky-login
+dori migrate --to herdr --role duty-loop
+```
+
+エージェントのセッションなら、lane を保留し、エージェントに引き継ぎのチェックポイントを書かせ、引き継ぎ brief（元の brief、チェックポイント、ログの末尾、最後の画面の行、溜まったメッセージ）を作り、その brief で後継のセッションを開きます。後継が idle か working を報告したら、inbox を移し（held の項目は held のまま）、記録を切り替え、古いセッションを閉じます。セッションごとに `MIGRATED`、`SKIP`、`DEFERRED`（エージェントが blocked だったか、`--wait-minutes`（既定 10 分）を過ぎても working だった）、`MIGRATE_ROLLBACK` のどれかを出します。ロールバックは後継を閉じ、inbox を戻して、終了コード 3 で終わります。`--resume` は brief の代わりにエージェント自身のセッションファイルを開き直します。古いセッションが生きていて idle か done で、セッションのパスが記録されているときだけ受け付けます。
+
+対応していないのは、他のマシン上のセッション（hc の `--on`）と、hc でのウィンドウ配置です。Windows での hc はここでは試していません。
+
 ## コマンド一覧
 
 harness、`src/cli.ts`。
@@ -250,6 +276,8 @@ bun run ci          # Biome、tsc、knip、250 行のラチェット、そのあ
 ```
 
 どちらのスイートもモデルもネットワークも要りません。harness は偽の herdr と偽の `gh` に対して、Dori mode は偽の herdr、git、`gh` に対して走ります。エンドツーエンドのテスト二つは本物の herdr サーバーを起動し、`herdr` が PATH にないときは自分自身を skip します。
+
+hc を扱うエンドツーエンドのテストもあと二つあります。`test/e2e-hc.test.ts` は専用の `HC_SESSION` と XDG ディレクトリで本物の hc コアを起動し、omo の代わりに OSC 7501 を報告するフィクスチャのエージェントを使います。`test/e2e-migrate.test.ts` は lane を herdr から hc に移します。どちらもバイナリが PATH になければ自分自身を skip します。
 
 ## テレメトリー
 

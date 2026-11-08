@@ -120,6 +120,8 @@ curl -fsSL https://raw.githubusercontent.com/sisyphuslabs/dori-superagent/main/i
 
 ## 빠른 시작
 
+herdr와 hc를 둘 다 설치했다면 `~/.dori/config.json`에 `{ "runtime": "hc" }`(또는 `"herdr"`)를 넣어 런타임을 한 번 골라 두십시오(아래 예시는 herdr 표기이고, hc에서는 `hc:t1`처럼 찍힙니다).
+
 herdr 서버를 켠 뒤 하네스를 올립니다.
 
 ```sh
@@ -188,6 +190,30 @@ dori done fix-flaky-login             # 레인의 탭을 닫습니다. READY 레
 
 `~/.dori/config.json`의 `hooks.reviewCommand`로 내장 리뷰어를 직접 만든 명령으로 바꿀 수 있습니다. 같은 `VERDICT:` 줄을 내야 합니다.
 
+## 런타임
+
+세션은 herdr에서도, hc([herdr-core](https://releases.herdr.dev/core/install.sh))에서도 돌고, 한 홈 안에 두 런타임의 세션이 같이 있어도 됩니다. 하네스는 `src/runtime/`의 인터페이스 하나로 둘을 다룹니다. 저장된 레인과 역할은 자기를 연 런타임을 기억하기 때문에, 지금 어느 런타임이 선택돼 있든 그 세션에 대한 명령은 원래 런타임으로 갑니다. 런타임이 생기기 전에 쓰인 레인 기록은 herdr로 읽습니다. 동사 하나하나의 대응표를 포함한 전체 설계는 [`docs/runtime.md`](docs/runtime.md)에 있습니다.
+
+새 세션은 `DORI_RUNTIME`이 가리키는 런타임에 열립니다. 이 값이 없으면 `$DORI_HOME/config.json`(기본값 `~/.dori/config.json`, Dori mode가 읽는 바로 그 파일)의 `"runtime": "herdr"` 또는 `"runtime": "hc"`를 따릅니다. 둘 다 없으면 Dori가 알아냅니다. hc 터미널 안(`HC_TERMINAL_ID`)이면 hc, herdr pane 안(`HERDR_PANE_ID`)이면 herdr, 그 밖에는 PATH에 있는 바이너리 하나를 씁니다. 바이너리가 둘 다 있거나 하나도 없으면 고치는 방법을 한 줄로 알려 주고 거절합니다. 짐작으로 고르면 아무도 보지 않는 곳에 세션이 열리기 때문입니다. `dori status`는 첫 줄에 `RUNTIME hc (from config)`처럼 선택 결과를 찍습니다.
+
+hc에는 워크스페이스도 탭도 없습니다. Dori는 세션마다 터미널을 하나 열고 라벨을 붙입니다. `dori.group`(`DORI_HOME` 경로로 만든 16진수 8자), `dori.role`, `dori.name`, 레인이면 `dori.lane`까지입니다. 한 홈의 세션 목록은 `hc ls --label dori.group=<g>`로 보고, 세션 하나는 `hc attach <t>`로 엽니다.
+
+hc에서 상태는 에이전트가 직접 보내는 OSC 7501 보고로만 알 수 있고, 최근 omo 빌드는 이 보고를 보냅니다. 한 번도 보고하지 않는 에이전트는 `unknown`으로 남고, 그 에이전트에게 가는 메시지는 inbox에서 기다립니다. `~/.config/herdr-core/config.toml`에 `notes = false`를 넣어 두십시오. 그래야 hc가 부모 에이전트에 스스로 무언가를 입력하지 않습니다. 듀티 루프는 어느 런타임에서든 홈마다 하나만 돕니다(`duty/lock`).
+
+대상에는 `herdr:w1:p3`, `hc:t7`, 접두사 없는 `w1:p3`, `lead`, `duty`, 레인 키를 씁니다. 접두사 없는 `t7`은 레인 키로 읽고, hc 터미널로는 읽지 않습니다.
+
+`dori migrate`는 세션을 다른 런타임으로 옮깁니다.
+
+```sh
+dori migrate --to hc --all --dry-run       # PLAN 줄만 찍고 아무것도 바꾸지 않음
+dori migrate --to hc --lane fix-flaky-login
+dori migrate --to herdr --role duty-loop
+```
+
+에이전트 세션이면 레인을 붙잡아 두고, 에이전트에게 인계 체크포인트를 쓰게 하고, 인계 브리프(원래 브리프, 체크포인트, 로그 끝부분, 마지막 화면 줄, 쌓인 메시지)를 만들고, 그 브리프로 새 세션을 엽니다. 새 세션이 idle이나 working을 보고하면 inbox를 옮기고(held 항목은 그대로 held), 기록을 새 세션으로 바꾸고, 옛 세션을 닫습니다. 세션마다 결과 한 줄이 나옵니다. `MIGRATED`, `SKIP`, `DEFERRED`(에이전트가 blocked였거나, `--wait-minutes`(기본 10분)가 지나도 working이었음), 그리고 `MIGRATE_ROLLBACK`입니다. 롤백은 새 세션을 닫고 inbox를 되돌린 뒤 3으로 끝납니다. `--resume`을 주면 브리프 대신 에이전트가 쓰던 세션 파일을 다시 엽니다. 옛 세션이 살아 있고, idle이나 done이고, 세션 경로가 기록돼 있을 때만 받아 줍니다.
+
+지원하지 않는 것은 다른 머신의 세션(hc의 `--on`)과 hc의 창 배치입니다. Windows의 hc는 여기서 시험해 보지 않았습니다.
+
 ## 명령 목록
 
 하네스, `src/cli.ts`입니다.
@@ -250,6 +276,8 @@ bun run ci          # Biome, tsc, knip, 250줄 래칫, 그다음 두 스위트
 ```
 
 두 스위트 모두 모델도 네트워크도 쓰지 않습니다. 하네스는 가짜 herdr과 가짜 `gh`에, Dori mode는 가짜 herdr, git, `gh`에 대고 돕니다. 엔드투엔드 테스트 둘은 진짜 herdr 서버를 띄우고, `herdr`가 PATH에 없으면 스스로 건너뜁니다.
+
+hc를 다루는 엔드투엔드 테스트도 둘 있습니다. `test/e2e-hc.test.ts`는 자기만의 `HC_SESSION`과 XDG 폴더로 진짜 hc 코어를 띄우고 omo 대신 OSC 7501을 보고하는 픽스처 에이전트를 쓰며, `test/e2e-migrate.test.ts`는 레인을 herdr에서 hc로 옮깁니다. 바이너리가 PATH에 없으면 각각 건너뜁니다.
 
 ## 텔레메트리
 

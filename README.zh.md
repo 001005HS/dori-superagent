@@ -120,6 +120,8 @@ curl -fsSL https://raw.githubusercontent.com/sisyphuslabs/dori-superagent/main/i
 
 ## 快速开始
 
+如果 herdr 和 hc 都装了，就在 `~/.dori/config.json` 里写一次 `{ "runtime": "hc" }`（或 `"herdr"`）选定运行时；下面的引用是 herdr 的写法，在 hc 上会是 `hc:t1`。
+
 先启动 herdr 的服务端，再把 harness 拉起来：
 
 ```sh
@@ -188,6 +190,30 @@ duty 循环是 `dori duty --interval 60`，一个跑在 duty 会话旁边的普�
 
 `~/.dori/config.json` 里的 `hooks.reviewCommand` 可以用自己的命令替换内置评审员，它必须打出同样的 `VERDICT:` 行。
 
+## 运行时
+
+会话可以跑在 herdr 上，也可以跑在 hc（[herdr-core](https://releases.herdr.dev/core/install.sh)）上，同一个 home 里可以同时有两种运行时的会话。harness 通过 `src/runtime/` 里的同一个接口操作两者。每条保存下来的 lane 和每个角色都记得是哪个运行时打开了它，所以不管当前选的是哪个运行时，针对它的命令都会发回原来的运行时。运行时出现之前写下的 lane 记录按 herdr 读取。完整设计和逐个动词的对照表在 [`docs/runtime.md`](docs/runtime.md)。
+
+新会话开在 `DORI_RUNTIME` 指定的运行时上；没有设置时，看 `$DORI_HOME/config.json`（默认 `~/.dori/config.json`，也就是 Dori mode 读的那个文件）里的 `"runtime": "herdr"` 或 `"runtime": "hc"`。两者都没有时由 Dori 自己判断：在 hc 终端里（`HC_TERMINAL_ID`）选 hc，在 herdr 窗格里（`HERDR_PANE_ID`）选 herdr，否则用 PATH 上唯一的那个二进制。两个二进制都在或者都不在时，它会拒绝，并用一行说明怎么修，因为靠猜会把会话开在没人看的地方。`dori status` 第一行打印选择结果，例如 `RUNTIME hc (from config)`。
+
+hc 上没有工作区，也没有标签页。Dori 每个会话开一个终端，并给它打上标签：`dori.group`（由 `DORI_HOME` 路径算出的 8 位十六进制字符）、`dori.role`、`dori.name`，lane 还有 `dori.lane`。`hc ls --label dori.group=<g>` 列出一个 home 的会话，`hc attach <t>` 打开其中一个。
+
+hc 上的状态只来自 agent 自己发出的 OSC 7501 报告，较新的 omo 构建会发送它。从不报告的 agent 一直是 `unknown`，发给它的消息留在它的 inbox 里等着。在 `~/.config/herdr-core/config.toml` 里设置 `notes = false`，这样 hc 不会自己往父 agent 里输入任何东西。无论哪种运行时，每个 home 只跑一个 duty 循环（`duty/lock`）。
+
+目标可以写 `herdr:w1:p3`、`hc:t7`、不带前缀的 `w1:p3`、`lead`、`duty` 或 lane 键。不带前缀的 `t7` 是 lane 键，不会被当作 hc 终端。
+
+`dori migrate` 把会话移到另一个运行时：
+
+```sh
+dori migrate --to hc --all --dry-run       # 只打印 PLAN 行，不做任何改动
+dori migrate --to hc --lane fix-flaky-login
+dori migrate --to herdr --role duty-loop
+```
+
+对 agent 会话，它先挂起 lane，让 agent 写一个交接检查点，生成交接 brief（原 brief、检查点、日志尾部、最后几行屏幕内容、排队的消息），用这份 brief 打开替代会话，等它报告 idle 或 working，再迁移 inbox（held 的条目仍然是 held），切换记录，关闭旧会话。每个会话打印 `MIGRATED`、`SKIP`、`DEFERRED`（agent 处于 blocked，或者过了 `--wait-minutes`，默认 10，仍在 working）或 `MIGRATE_ROLLBACK`；回滚会关闭替代会话，把 inbox 放回原处，并以 3 退出。`--resume` 用 agent 自己的会话文件代替 brief 重新打开，只在源会话还活着、处于 idle 或 done、并且记录了会话路径时才接受。
+
+不支持：其他机器上的会话（hc 的 `--on`），以及 hc 上的窗口布局。hc 在 Windows 上的表现这里没有测试过。
+
 ## 命令清单
 
 harness，`src/cli.ts`：
@@ -250,6 +276,8 @@ bun run ci          # Biome、tsc、knip、250 行棘轮，然后是两个测试
 ```
 
 两个套件都不需要模型和网络：harness 跑在假的 herdr 和假的 `gh` 上，Dori mode 跑在假的 herdr、git 和 `gh` 上。两个端到端测试会启动真的 herdr 服务端，`herdr` 不在 PATH 时自行跳过。
+
+另有两个端到端测试覆盖 hc。`test/e2e-hc.test.ts` 用独立的 `HC_SESSION` 和 XDG 目录启动真的 hc 核心，用一个报告 OSC 7501 的 fixture agent 代替 omo；`test/e2e-migrate.test.ts` 把一条 lane 从 herdr 移到 hc。对应的二进制不在 PATH 时各自跳过。
 
 ## 遥测
 

@@ -120,6 +120,8 @@ Das klont dieses Repository nach `~/.dori/src`, verlinkt den Skill nach `~/.agen
 
 ## Schnellstart
 
+Sind herdr und hc beide installiert, wähle die Runtime einmal mit `{ "runtime": "hc" }` (oder `"herdr"`) in `~/.dori/config.json`; die Refs unten sind die von herdr, auf hc lauten sie `hc:t1`.
+
 Starte den Server von herdr und fahre dann das Harness hoch:
 
 ```sh
@@ -188,6 +190,30 @@ Receipts schreibt `dori review`, sonst nichts. Es lässt ein frisches, nicht int
 
 `hooks.reviewCommand` in `~/.dori/config.json` ersetzt den eingebauten Reviewer durch deinen eigenen Befehl, der dieselbe `VERDICT:`-Zeile ausgeben muss.
 
+## Runtimes
+
+Sitzungen laufen auf herdr oder auf hc ([herdr-core](https://releases.herdr.dev/core/install.sh)), und ein Home kann Sitzungen auf beiden halten. Das Harness spricht mit beiden über eine Schnittstelle in `src/runtime/`, und jede gespeicherte lane und Rolle merkt sich, welche Runtime sie geöffnet hat, sodass Befehle dorthin gehen, egal welche Runtime gerade gewählt ist. lane-Einträge aus der Zeit vor den Runtimes gelten als herdr. Das vollständige Design mit der Zuordnung Verb für Verb steht in [`docs/runtime.md`](docs/runtime.md).
+
+Neue Sitzungen öffnen sich auf der Runtime aus `DORI_RUNTIME`, sonst nach `"runtime": "herdr"` oder `"runtime": "hc"` in `$DORI_HOME/config.json` (Standard `~/.dori/config.json`, dieselbe Datei, die Dori mode liest). Ist beides nicht gesetzt, erkennt Dori sie selbst: in einem hc-Terminal (`HC_TERMINAL_ID`) nimmt es hc, in einem herdr-Pane (`HERDR_PANE_ID`) herdr, sonst die eine Binary im PATH. Bei beiden Binaries oder keiner lehnt Dori ab und nennt die Lösung in einer Zeile, denn geraten würden Sitzungen dort aufgehen, wo niemand hinschaut. `dori status` gibt die Wahl als erste Zeile aus, etwa `RUNTIME hc (from config)`.
+
+Auf hc gibt es weder Workspaces noch Tabs. Dori öffnet pro Sitzung ein Terminal und versieht es mit den Labels `dori.group` (8 Hex-Zeichen, abgeleitet aus dem Pfad von `DORI_HOME`), `dori.role`, `dori.name` und bei lanes `dori.lane`. `hc ls --label dori.group=<g>` listet die Sitzungen eines Homes, `hc attach <t>` öffnet eine.
+
+Der Status auf hc kommt nur aus dem eigenen OSC-7501-Bericht des Agents, und neuere omo-Builds senden ihn. Ein Agent, der nie berichtet, bleibt `unknown`, und Nachrichten an ihn warten in seiner inbox. Setz `notes = false` in `~/.config/herdr-core/config.toml`, damit hc von sich aus nichts in einen Eltern-Agent tippt. Pro Home läuft auf beiden Runtimes nur eine duty-Schleife (`duty/lock`).
+
+Ziele nehmen `herdr:w1:p3`, `hc:t7`, ein nacktes `w1:p3`, `lead`, `duty` oder einen lane-Schlüssel. Ein nacktes `t7` ist ein lane-Schlüssel, nie ein hc-Terminal.
+
+`dori migrate` zieht Sitzungen auf die andere Runtime um:
+
+```sh
+dori migrate --to hc --all --dry-run       # PLAN-Zeilen, nichts ändert sich
+dori migrate --to hc --lane fix-flaky-login
+dori migrate --to herdr --role duty-loop
+```
+
+Bei einer Agent-Sitzung hält es die lane an, bittet den Agent um einen Übergabe-Checkpoint, erstellt einen Übergabe-brief (brief, Checkpoint, Log-Ende, letzte Bildschirmzeilen, eingereihte Nachrichten), öffnet den Ersatz mit diesem brief, wartet, bis er idle oder working meldet, verschiebt die inbox (gehaltene Einträge bleiben gehalten), stellt den Eintrag um und schließt die alte Sitzung. Jede Sitzung gibt `MIGRATED`, `SKIP`, `DEFERRED` (der Agent war blocked oder nach `--wait-minutes`, Standard 10, noch working) oder `MIGRATE_ROLLBACK` aus; der Rollback schließt den Ersatz, legt die inbox zurück und endet mit Exit-Code 3. `--resume` öffnet statt des briefs die eigene Sitzungsdatei des Agents, nur für eine lebende Quelle im Zustand idle oder done mit gespeichertem Sitzungspfad.
+
+Nicht unterstützt: Sitzungen auf anderen Maschinen (`--on` von hc) und ein Fensterlayout auf hc. hc unter Windows ist hier nicht getestet.
+
 ## Befehlsübersicht
 
 Das Harness, `src/cli.ts`:
@@ -250,6 +276,8 @@ bun run ci          # Biome, tsc, knip, die 250-Zeilen-Ratsche, dann beide Suite
 ```
 
 Keine der beiden Suiten braucht ein Modell oder das Netz: das Harness läuft gegen ein Fake-herdr und ein Fake-`gh`, Dori mode gegen Fake-herdr, git und `gh`. Zwei End-to-End-Tests starten einen echten herdr-Server und überspringen sich selbst, wenn `herdr` nicht im PATH liegt.
+
+Zwei weitere decken hc ab. `test/e2e-hc.test.ts` startet einen echten hc-Core in eigenem `HC_SESSION` und eigenen XDG-Verzeichnissen, mit einem Fixture-Agent, der statt omo OSC 7501 meldet, und `test/e2e-migrate.test.ts` zieht eine lane von herdr nach hc um. Jeder überspringt sich selbst, wenn seine Binary nicht im PATH liegt.
 
 ## Telemetrie
 
