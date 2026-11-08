@@ -14,7 +14,7 @@ import { isLessonOutcome, LessonError, Lessons } from "./lessons.ts";
 import { pauseLane, resumeLane } from "./pause.ts";
 import { Registry, statusOf } from "./registry.ts";
 import { isReportKind, reportLine, ReportError, Reports } from "./reports.ts";
-import { realClock, run } from "./run.ts";
+import { realClock, run, runtimesOf } from "./run.ts";
 import { syncRegistry } from "./sync.ts";
 import { canLaunch } from "./routing.ts";
 import { fetchHttp, MessengerError, UnsafeMessageError } from "./messenger/http.ts";
@@ -152,7 +152,7 @@ const ceiling = (name: string): number | null | undefined => {
 };
 
 const lane = async (k: string | undefined) => {
-  const found = k ? await deps.registry.read(k) : await deps.registry.byPane(process.env["HERDR_PANE_ID"] ?? "");
+  const found = k ? await deps.registry.read(k) : await deps.registry.bySession(runtimesOf(deps).selfAny(process.env));
   if (!found) return die(k ? `no registered lane "${k}"` : "no open lane is registered for this pane");
   if (statusOf(found) === "closed") return die(`lane ${found.key} is already closed`);
   return found;
@@ -264,8 +264,7 @@ try {
       // security boundary, since it reads only $HERDR_PANE_ID (env -u gets past it) and a direct write to
       // lessons.jsonl skips the CLI.
       const paneLane = async () => {
-        const pane = process.env["HERDR_PANE_ID"];
-        return pane ? await deps.registry.byPane(pane) : null;
+        return await deps.registry.bySession(runtimesOf(deps).selfAny(process.env));
       };
       switch (key) {
         case "add": {

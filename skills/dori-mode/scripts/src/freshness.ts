@@ -3,8 +3,9 @@ import { existsSync } from "node:fs";
 import { fill } from "./config.ts";
 import type { FlowDeps } from "./done-flow.ts";
 import { checkPausedLane } from "./pause.ts";
-import { readScreen, sendVerified } from "./panes.ts";
-import { type Lane, statusOf } from "./registry.ts";
+import { runtimesOf } from "./run.ts";
+import { readScreen, sendVerified } from "./sessions.ts";
+import { type Lane, sessionOf, statusOf } from "./registry.ts";
 import { type Progress, ReportError, reportLine, Reports } from "./reports.ts";
 import { Supervision, type SupervisionResult } from "./supervision.ts";
 
@@ -30,7 +31,7 @@ export const scrubForThread = (line: string, home: string): string =>
     .trim();
 
 // A report is a line that starts with [REPORT], or the last quoted element of an argv row, the shape lanes are told
-// to send it in: ["herdr", "pane", "run", "lead:p1", "[REPORT] key | kind | text"]. Instructions
+// to send it in: an argv array ending in "lead:p1", "[REPORT] key | kind | text". Instructions
 // and prompts that quote the grammar mid-sentence are dropped before parsing, so an example is never posted as the
 // lane's progress. A report whose whole text is one unfilled placeholder ($name, ${name}, {name}, %s, <what>) is a
 // template, quoted or not (#29). The match is anchored to the [REPORT] key | kind | text structure, so
@@ -112,7 +113,8 @@ export const freshnessTick = async (deps: FlowDeps, home: string): Promise<Sweep
       }
       continue;
     }
-    if (statusOf(lane) !== "working" || !lane.pane) continue;
+    const ref = sessionOf(lane);
+    if (statusOf(lane) !== "working" || !ref) continue;
     // Only launched lanes report through the journal; an adopted lane keeps the screen path even if a record exists.
     let previous: Progress | null = null;
     let progress: Progress | null = null;
@@ -122,7 +124,7 @@ export const freshnessTick = async (deps: FlowDeps, home: string): Promise<Sweep
     if (lane.reportProtocol === "jsonl-v1") {
       try {
         previous = reports.read(lane.key);
-        const screen = await readScreen(deps.run, lane.pane);
+        const screen = await readScreen(runtimesOf(deps), ref);
         let supervised: SupervisionResult | null = null;
         try {
           // A launched lane is supervised once its journal exists; without one there is no progress to judge.
@@ -172,9 +174,9 @@ export const freshnessTick = async (deps: FlowDeps, home: string): Promise<Sweep
     let current = latest;
     if (running && silentMin >= deps.config.nudgeAfterMin && (current.lastNudgeAt ?? 0) < heard) {
       const delivery = await sendVerified(
-        deps.run,
+        runtimesOf(deps),
         deps.clock,
-        lane.pane,
+        ref,
         `[LEAD] your work thread has had no update for ${silentMin} min. Post a 1-2 sentence progress line (done since last, next) and keep its status true.`,
       );
       current = { ...current, lastNudgeAt: now };
@@ -199,7 +201,7 @@ export const freshnessTick = async (deps: FlowDeps, home: string): Promise<Sweep
         fromJournal ??
         (lane.reportProtocol === "jsonl-v1"
           ? null
-          : anchoredReportLine(await readScreen(deps.run, lane.pane, 200), lane.key));
+          : anchoredReportLine(await readScreen(runtimesOf(deps), ref, 200), lane.key));
       const seenBefore = current.lastSeenReport;
       current = { ...current, lastSeenReport: report ?? undefined };
       let hold: { kind: SweepAct["kind"]; detail: string } | null = null;

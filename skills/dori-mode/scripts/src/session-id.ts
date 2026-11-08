@@ -1,7 +1,8 @@
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 
-import type { Runner } from "./run.ts";
+import type { SessionRef } from "../../../../src/runtime/types.ts";
+import { type ChosenRuntimes, type Runner, runtimesFor } from "./run.ts";
 
 export type Proc = { readonly pid: number; readonly ppid: number; readonly cmd: string };
 export type SessionHit = {
@@ -45,27 +46,32 @@ export const sessionFileStart = (name: string): { readonly id: string; readonly 
 
 export type SessionDeps = {
   readonly run: Runner;
+  /** Resolves the session's root process; built over `run` when absent (a stored ref needs no runtime choice). */
+  readonly rts?: ChosenRuntimes;
   readonly sessionsDir: string;
   readonly listDir?: (dir: string) => readonly string[];
 };
 
+/** The session's root process (herdr's shell, hc's terminal program); 0 when the runtime cannot say. */
+const rootPidOf = async (ref: SessionRef, deps: SessionDeps): Promise<number> => {
+  const rts = deps.rts ?? runtimesFor({}, process.env, deps.run);
+  try {
+    return (await rts.for(ref).probe(ref)).rootPid ?? 0;
+  } catch {
+    return 0;
+  }
+};
+
 export const resolveSession = async (
-  pane: string,
+  ref: SessionRef,
   cwd: string,
   table: readonly Proc[],
   deps: SessionDeps,
 ): Promise<SessionHit> => {
-  const info = await deps.run(["herdr", "pane", "process-info", "--pane", pane]);
-  const shellPid =
-    info.code === 0
-      ? Number(
-          (JSON.parse(info.out) as { result?: { process_info?: { shell_pid?: number } } }).result?.process_info
-            ?.shell_pid ?? 0,
-        )
-      : 0;
-  const agent = shellPid
-    ? descendants(table, shellPid).find((p) => AGENT.test(p.cmd) && !/\bmcp\b/.test(p.cmd))
-    : undefined;
+  const rootPid = await rootPidOf(ref, deps);
+  // The root itself is a candidate: an agent run directly as the session's program has no shell above it.
+  const candidates = rootPid ? [...table.filter((p) => p.pid === rootPid), ...descendants(table, rootPid)] : [];
+  const agent = candidates.find((p) => AGENT.test(p.cmd) && !/\bmcp\b/.test(p.cmd));
   if (!agent) return { id: "", via: "none" };
   const argv = agent.cmd.split(/\s+/);
   const flagAt = argv.indexOf("--session");
