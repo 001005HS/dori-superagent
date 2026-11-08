@@ -1,6 +1,6 @@
 import type { AgentIdentity, DeliverOutcome, Key, SubmitResult } from "../types.ts";
 import { type HerdrCli, reasonOf, ToolError } from "./exec.ts";
-import { foreground, paneAgent } from "./probe.ts";
+import { foreground, paneAgent, probe } from "./probe.ts";
 
 /** The terminal needs a moment to finish a bracketed paste before an Enter is read as a submit. */
 export const PASTE_SETTLE_MS = 400;
@@ -20,7 +20,10 @@ const identity = (agent: string | undefined, pgid: number | undefined): AgentIde
  * is in the agent's input and only the Enter that submits it is missing (#108 identity in `into`).
  */
 export async function deliver(cli: HerdrCli, paneId: string, text: string, sleep: Sleep): Promise<DeliverOutcome> {
-  if ((await foreground(cli, paneId)).shell) return NO_AGENT;
+  // Probe first (#66): a gone pane or a shell in front gets nothing, whatever herdr's status word says. herdr types
+  // whatever the status is (the caller decided), so the #62 screen read is skipped here.
+  const first = await probe(cli, paneId, false);
+  if (first.status === "gone" || first.shellInFront) return NO_AGENT;
   try {
     await cli.call(["agent", "prompt", paneId, text]);
     return { kind: "delivered" };

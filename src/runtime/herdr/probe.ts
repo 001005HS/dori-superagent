@@ -95,11 +95,14 @@ async function screenShowsIdle(cli: HerdrCli, paneId: string): Promise<boolean> 
   }
 }
 
-/** One snapshot of a pane: herdr's status (with the #62 screen check), the agent, its foreground, title and cwd. */
-export async function probe(cli: HerdrCli, paneId: string): Promise<Probe> {
+/**
+ * One snapshot of a pane: herdr's status (with the #62 screen check), the agent, its foreground, title and cwd.
+ * `screenCheck: false` skips the #62 screen read, for callers that act the same whether the agent is idle or working.
+ */
+export async function probe(cli: HerdrCli, paneId: string, screenCheck = true): Promise<Probe> {
   const { status, agent, title, cwd } = await paneAgent(cli, paneId);
   if (status === "gone") return { status, shellInFront: true };
-  const seen: AgentStatus = status === "working" && (await screenShowsIdle(cli, paneId)) ? "idle" : status;
+  const seen: AgentStatus = screenCheck && status === "working" && (await screenShowsIdle(cli, paneId)) ? "idle" : status;
   const front = await foreground(cli, paneId);
   return {
     status: seen,

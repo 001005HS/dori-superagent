@@ -2,8 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { type ExecResult, ToolError } from "../src/runtime/exec.ts";
 import { HerdrError, HerdrRuntime, omoScreenIdle } from "../src/runtime/herdr/index.ts";
-import { openSession } from "../src/runtime/open.ts";
-import type { CreateSpec } from "../src/runtime/types.ts";
+import { type CreateSpec, openSession } from "../src/runtime/types.ts";
 import { fail, ok, omoFront, recorder, ref, world } from "./herdr-recorder.ts";
 
 const pane = { pane_id: "w1:p2", tab_id: "w1:t2", workspace_id: "w1" };
@@ -66,10 +65,10 @@ describe("herdr argv", () => {
   });
 
   test("a message is one argv element, delivered verbatim: quotes, $(...) and newlines are never expanded", async () => {
-    const r = recorder((argv) => ok(argv[1] === "process-info" ? omoFront : {}));
+    const r = recorder((argv) => ok(argv[1] === "process-info" ? omoFront : { pane: { agent: "omo", agent_status: "idle" } }));
     const text = `it's "done" $(rm -rf ~) \`id\`\nline two`;
     expect(await new HerdrRuntime(r.exec, "").deliver(ref("w1:p1"), text)).toEqual({ kind: "delivered" });
-    expect(r.calls).toEqual([["pane", "process-info", "--pane", "w1:p1"], ["agent", "prompt", "w1:p1", text]]);
+    expect(r.calls).toEqual([["pane", "get", "w1:p1"], ["pane", "process-info", "--pane", "w1:p1"], ["agent", "prompt", "w1:p1", text]]);
   });
 
   test("list reads pane list and keeps only the group's panes; self comes from the pane's own env", async () => {
