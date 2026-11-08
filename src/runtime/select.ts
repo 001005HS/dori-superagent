@@ -23,7 +23,8 @@ const isExecutableFile = (path: string): boolean => {
   }
 };
 
-const nonEmpty = (value: string | undefined): string | undefined => (value === undefined || value === "" ? undefined : value);
+const nonEmpty = (value: string | undefined): string | undefined =>
+  value === undefined || value === "" ? undefined : value;
 
 function configRuntime(configPath: string): RuntimeKind | undefined {
   let text: string;
@@ -39,10 +40,12 @@ function configRuntime(configPath: string): RuntimeKind | undefined {
   } catch (e) {
     throw new ConfigError(`${configPath} is not valid JSON: ${e instanceof Error ? e.message : String(e)}`);
   }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new ConfigError(`${configPath} must hold a JSON object`);
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
+    throw new ConfigError(`${configPath} must hold a JSON object`);
   if (!("runtime" in parsed)) return undefined;
   const value: unknown = parsed.runtime;
-  if (!isKind(value)) throw new ConfigError(`${configPath}: "runtime" must be "herdr" or "hc", got ${JSON.stringify(value)}`);
+  if (!isKind(value))
+    throw new ConfigError(`${configPath}: "runtime" must be "herdr" or "hc", got ${JSON.stringify(value)}`);
   return value;
 }
 

@@ -10,8 +10,15 @@ export const ENTER_ATTEMPTS = 3;
 export type Sleep = (ms: number) => Promise<void>;
 
 const NO_AGENT: DeliverOutcome = { kind: "no-agent" };
-const ambiguous = (step: string, failure: unknown): DeliverOutcome => ({ kind: "ambiguous", detail: `herdr ${step} failed: ${reasonOf(failure)}`, failure });
-const identity = (agent: string | undefined, pgid: number | undefined): AgentIdentity => ({ ...(agent !== undefined ? { agent } : {}), ...(pgid !== undefined ? { pgid } : {}) });
+const ambiguous = (step: string, failure: unknown): DeliverOutcome => ({
+  kind: "ambiguous",
+  detail: `herdr ${step} failed: ${reasonOf(failure)}`,
+  failure,
+});
+const identity = (agent: string | undefined, pgid: number | undefined): AgentIdentity => ({
+  ...(agent !== undefined ? { agent } : {}),
+  ...(pgid !== undefined ? { pgid } : {}),
+});
 
 /**
  * Delivers one message to the agent in a pane as a single argv element: nothing in it is ever expanded by a shell.
@@ -32,7 +39,8 @@ export async function deliver(cli: HerdrCli, paneId: string, text: string, sleep
     // with `pane run` is detected but refused. Fall back to typing the text and pressing Enter.
     // Match herdr's own output, never e.message: that carries argv, which includes the delivered text.
     // Any other failure (a timeout, say) may come after herdr handed the prompt over: it is ambiguous.
-    if (!(e instanceof ToolError) || !/agent_not_ready/.test(e.result.stderr || e.result.stdout)) return ambiguous("agent prompt", e);
+    if (!(e instanceof ToolError) || !/agent_not_ready/.test(e.result.stderr || e.result.stdout))
+      return ambiguous("agent prompt", e);
     // agent_not_ready also covers an agent that exited and left a shell in front: typing would run the text there.
     // Re-read right before typing (#66): only a pane that still has an agent gets keystrokes.
     const { status, agent } = await paneAgent(cli, paneId);
@@ -48,7 +56,9 @@ export async function deliver(cli: HerdrCli, paneId: string, text: string, sleep
     }
     await sleep(PASTE_SETTLE_MS);
     const missed = await pressEnter(cli, paneId);
-    return missed ? { kind: "typed", into: identity(agent, front.pgid), failure: missed.failure } : { kind: "delivered" };
+    return missed
+      ? { kind: "typed", into: identity(agent, front.pgid), failure: missed.failure }
+      : { kind: "delivered" };
   }
 }
 

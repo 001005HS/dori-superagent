@@ -8,14 +8,21 @@ describe("deliver outcomes", () => {
     const p = w.addPane("w1:p1");
     expect(await rt.deliver(ref("w1:p1"), "hi")).toEqual({ kind: "delivered" });
     expect(p.received).toEqual(["hi"]);
-    expect(herdr()).toEqual([["pane", "get", "w1:p1"], ["pane", "process-info", "--pane", "w1:p1"], ["agent", "prompt", "w1:p1", "hi"]]);
+    expect(herdr()).toEqual([
+      ["pane", "get", "w1:p1"],
+      ["pane", "process-info", "--pane", "w1:p1"],
+      ["agent", "prompt", "w1:p1", "hi"],
+    ]);
   });
 
   test("a shell in front: no-agent, nothing sent", async () => {
     const { w, rt, herdr } = world();
     w.addPane("w1:p1").foreground = "-bash";
     expect(await rt.deliver(ref("w1:p1"), "hi")).toEqual({ kind: "no-agent" });
-    expect(herdr()).toEqual([["pane", "get", "w1:p1"], ["pane", "process-info", "--pane", "w1:p1"]]);
+    expect(herdr()).toEqual([
+      ["pane", "get", "w1:p1"],
+      ["pane", "process-info", "--pane", "w1:p1"],
+    ]);
   });
 
   test("a gone pane: no-agent after one pane get, nothing sent", async () => {
@@ -31,7 +38,11 @@ describe("deliver outcomes", () => {
     expect(await rt.deliver(ref("w1:p1"), "hi", { when: "working", force: true })).toEqual({ kind: "no-agent" });
     p.foreground = "omo";
     expect(await rt.deliver(ref("w1:p1"), "hi", { when: "any" })).toEqual({ kind: "delivered" });
-    expect(herdr().slice(2)).toEqual([["pane", "get", "w1:p1"], ["pane", "process-info", "--pane", "w1:p1"], ["agent", "prompt", "w1:p1", "hi"]]);
+    expect(herdr().slice(2)).toEqual([
+      ["pane", "get", "w1:p1"],
+      ["pane", "process-info", "--pane", "w1:p1"],
+      ["agent", "prompt", "w1:p1", "hi"],
+    ]);
     expect(herdr().some((a) => a[1] === "read")).toBe(false);
   });
 
@@ -51,7 +62,12 @@ describe("deliver outcomes", () => {
     expect(await rt.deliver(ref("w1:p1"), "  one\n\n  two \n")).toEqual({ kind: "delivered" });
     expect(p.received).toEqual(["one / two"]);
     expect(sleeps).toEqual([400]);
-    expect(herdr().slice(3)).toEqual([["pane", "get", "w1:p1"], ["pane", "process-info", "--pane", "w1:p1"], ["pane", "send-text", "w1:p1", "one / two"], ["pane", "send-keys", "w1:p1", "enter"]]);
+    expect(herdr().slice(3)).toEqual([
+      ["pane", "get", "w1:p1"],
+      ["pane", "process-info", "--pane", "w1:p1"],
+      ["pane", "send-text", "w1:p1", "one / two"],
+      ["pane", "send-keys", "w1:p1", "enter"],
+    ]);
   });
 
   test("agent_not_ready and the agent left (shell, gone, or a shell in front): no-agent, nothing typed", async () => {
@@ -59,20 +75,38 @@ describe("deliver outcomes", () => {
       const { w, rt } = world();
       const p = w.addPane("w1:p1");
       w.promptFails.set("w1:p1", "agent_not_ready");
-      w.getHook.set("w1:p1", (n) => void (n === 2 && (change === "shell" ? (p.status = "shell") : (p.foreground = "-zsh"))));
+      w.getHook.set("w1:p1", (n) => {
+        if (n !== 2) return;
+        if (change === "shell") p.status = "shell";
+        else p.foreground = "-zsh";
+      });
       expect(await rt.deliver(ref("w1:p1"), "hi")).toEqual({ kind: "no-agent" });
       expect(p.received).toEqual([]);
     }
     let gets = 0;
     const live = { pane: { agent: "omo", agent_status: "idle" } };
-    const gone = recorder((a) => (a[0] === "agent" ? fail("agent_not_ready") : a[1] === "get" ? (++gets === 1 ? ok(live) : fail("pane_not_found")) : ok(omoFront)));
+    const gone = recorder((a) =>
+      a[0] === "agent"
+        ? fail("agent_not_ready")
+        : a[1] === "get"
+          ? ++gets === 1
+            ? ok(live)
+            : fail("pane_not_found")
+          : ok(omoFront),
+    );
     expect(await new HerdrRuntime(gone.exec, "").deliver(ref("w1:p1"), "hi")).toEqual({ kind: "no-agent" });
     expect(gone.calls.filter((a) => a[1] === "get")).toHaveLength(2);
     expect(gone.calls.some((a) => a[1] === "send-text")).toBe(false);
   });
 
   test("a failed send-text may have typed some of it: ambiguous", async () => {
-    const r = recorder((a) => (a[0] === "agent" ? fail("agent_not_ready") : a[1] === "send-text" ? fail("broken pipe") : ok(a[1] === "get" ? { pane: { agent: "omo", agent_status: "idle" } } : omoFront)));
+    const r = recorder((a) =>
+      a[0] === "agent"
+        ? fail("agent_not_ready")
+        : a[1] === "send-text"
+          ? fail("broken pipe")
+          : ok(a[1] === "get" ? { pane: { agent: "omo", agent_status: "idle" } } : omoFront),
+    );
     const out = await new HerdrRuntime(r.exec, "", { sleep: async () => {} }).deliver(ref("w1:p1"), "hi");
     expect(out).toMatchObject({ kind: "ambiguous", detail: "herdr pane send-text failed: broken pipe" });
   });
@@ -97,7 +131,9 @@ describe("deliver outcomes", () => {
     const err = spyOn(process.stderr, "write").mockImplementation(() => true);
     try {
       expect(await rt.deliver(ref("w1:p1"), "hi")).toEqual({ kind: "no-agent" });
-      expect(String(err.mock.calls[0]?.[0])).toBe("dori: herdr pane process-info failed for w1:p1 (process-info failed); holding delivery\n");
+      expect(String(err.mock.calls[0]?.[0])).toBe(
+        "dori: herdr pane process-info failed for w1:p1 (process-info failed); holding delivery\n",
+      );
     } finally {
       err.mockRestore();
     }
@@ -132,7 +168,10 @@ describe("submitTyped and typeIntoShell", () => {
     const sh = w.addPane("w1:p1", "shell");
     expect(await rt.typeIntoShell(ref("w1:p1"), "ls -la")).toBe(true);
     expect(sh.received).toEqual(["ls -la"]);
-    expect(herdr().slice(1)).toEqual([["pane", "send-text", "w1:p1", "ls -la"], ["pane", "send-keys", "w1:p1", "enter"]]);
+    expect(herdr().slice(1)).toEqual([
+      ["pane", "send-text", "w1:p1", "ls -la"],
+      ["pane", "send-keys", "w1:p1", "enter"],
+    ]);
     w.addPane("w1:p2", "idle");
     expect(await rt.typeIntoShell(ref("w1:p2"), "ls")).toBe(false);
   });

@@ -16,7 +16,12 @@ export function recorder(reply: (argv: readonly string[]) => ExecResult = () => 
 }
 export const ok = (result: unknown): ExecResult => ({ code: 0, stdout: JSON.stringify({ result }), stderr: "" });
 export const fail = (stderr: string, stdout = ""): ExecResult => ({ code: 1, stdout, stderr });
-export const ref = (id: string, group?: string, container?: string): SessionRef => ({ runtime: "herdr", id, ...(group !== undefined ? { group } : {}), ...(container !== undefined ? { container } : {}) });
+export const ref = (id: string, group?: string, container?: string): SessionRef => ({
+  runtime: "herdr",
+  id,
+  ...(group !== undefined ? { group } : {}),
+  ...(container !== undefined ? { container } : {}),
+});
 export const omoFront = { process_info: { foreground_processes: [{ name: "omo", argv: ["omo"] }] } };
 // The World recorder from test/fake.ts, with the paste settle recorded instead of slept.
 export function world() {

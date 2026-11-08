@@ -3,7 +3,18 @@ import type { Exec, ExecResult } from "../exec.ts";
 import { ToolError } from "../exec.ts";
 
 /** Exit codes per error kind (hc's rpc table), read only when stderr carries no JSON. */
-const KIND_BY_EXIT: Readonly<Record<number, string>> = { 2: "usage", 3: "not_found", 4: "machine_unknown", 5: "unavailable", 6: "invalid_params", 7: "needs_target", 8: "config", 9: "blocked", 10: "status_mismatch", 11: "finished" };
+const KIND_BY_EXIT: Readonly<Record<number, string>> = {
+  2: "usage",
+  3: "not_found",
+  4: "machine_unknown",
+  5: "unavailable",
+  6: "invalid_params",
+  7: "needs_target",
+  8: "config",
+  9: "blocked",
+  10: "status_mismatch",
+  11: "finished",
+};
 
 /**
  * An `hc` call that exited non-zero. `kind` is hc's stable error kind (not_found, blocked, status_mismatch, live, ...),
@@ -24,11 +35,12 @@ export class HcError extends ToolError {
   }
 }
 
-const asRecord = (value: unknown): Record<string, unknown> => (typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {});
+const asRecord = (value: unknown): Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 const str = (value: unknown): string | undefined => (typeof value === "string" && value !== "" ? value : undefined);
 
 function errorOf(argv: readonly string[], result: ExecResult): HcError {
-  const raw = (result.stderr.trim() || result.stdout.trim());
+  const raw = result.stderr.trim() || result.stdout.trim();
   let error: Record<string, unknown> = {};
   try {
     error = asRecord(asRecord(JSON.parse(raw))["error"]);
@@ -42,7 +54,11 @@ function errorOf(argv: readonly string[], result: ExecResult): HcError {
 
 export type HcCallOptions = { readonly redact?: string };
 
-export async function hcCall(exec: Exec, argv: readonly string[], options: HcCallOptions = {}): Promise<Record<string, unknown>> {
+export async function hcCall(
+  exec: Exec,
+  argv: readonly string[],
+  options: HcCallOptions = {},
+): Promise<Record<string, unknown>> {
   const full = ["--json", ...argv];
   const result = await exec("hc", full);
   if (result.code !== 0) {
@@ -53,4 +69,5 @@ export async function hcCall(exec: Exec, argv: readonly string[], options: HcCal
   return text === "" ? {} : asRecord(JSON.parse(text));
 }
 
-export const isKind = (e: unknown, ...kinds: readonly string[]): e is HcError => e instanceof HcError && e.kind !== undefined && kinds.includes(e.kind);
+export const isKind = (e: unknown, ...kinds: readonly string[]): e is HcError =>
+  e instanceof HcError && e.kind !== undefined && kinds.includes(e.kind);

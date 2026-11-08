@@ -4,7 +4,8 @@ import { paneStatus } from "./probe.ts";
 
 export type Env = Readonly<Record<string, string | undefined>>;
 
-const envFlags = (env: Readonly<Record<string, string>>): string[] => Object.entries(env).flatMap(([k, v]) => ["--env", `${k}=${v}`]);
+const envFlags = (env: Readonly<Record<string, string>>): string[] =>
+  Object.entries(env).flatMap(([k, v]) => ["--env", `${k}=${v}`]);
 const str = (value: unknown): string => String(value ?? "");
 
 const toRef = (paneId: string, workspaceId: string, tabId: string): SessionRef => ({
@@ -38,14 +39,38 @@ export async function create(cli: HerdrCli, spec: CreateSpec): Promise<SessionRe
   const env = envFlags(spec.env);
   switch (spec.container) {
     case "workspace-root":
-      return created((await cli.call(["workspace", "create", "--label", name, "--cwd", cwd, ...env, "--no-focus"]))["root_pane"]);
+      return created(
+        (await cli.call(["workspace", "create", "--label", name, "--cwd", cwd, ...env, "--no-focus"]))["root_pane"],
+      );
     case "tab": {
-      const r = await cli.call(["tab", "create", "--label", name, "--cwd", cwd, "--no-focus", ...(spec.group !== undefined ? ["--workspace", spec.group] : []), ...env]);
+      const r = await cli.call([
+        "tab",
+        "create",
+        "--label",
+        name,
+        "--cwd",
+        cwd,
+        "--no-focus",
+        ...(spec.group !== undefined ? ["--workspace", spec.group] : []),
+        ...env,
+      ]);
       return created(r["root_pane"], str(r["tab_id"]));
     }
     case "split-below": {
       if (spec.near === undefined) throw new Error("a split-below session needs `near`");
-      const r = await cli.call(["pane", "split", spec.near.id, "--direction", "down", "--ratio", "0.3", "--cwd", cwd, "--no-focus", ...env]);
+      const r = await cli.call([
+        "pane",
+        "split",
+        spec.near.id,
+        "--direction",
+        "down",
+        "--ratio",
+        "0.3",
+        "--cwd",
+        cwd,
+        "--no-focus",
+        ...env,
+      ]);
       return created(r["pane"]);
     }
   }

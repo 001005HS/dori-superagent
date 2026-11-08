@@ -26,11 +26,21 @@ export class HerdrCli {
   /** `pane read` returns the screen as plain text, not JSON. */
   async read(paneId: string, lines: number): Promise<string> {
     const full = this.session ? ["--session", this.session] : [];
-    const res = await this.exec("herdr", [...full, "pane", "read", paneId, "--lines", String(lines), "--source", "recent"]);
+    const res = await this.exec("herdr", [
+      ...full,
+      "pane",
+      "read",
+      paneId,
+      "--lines",
+      String(lines),
+      "--source",
+      "recent",
+    ]);
     if (res.code !== 0) throw new ToolError(["pane", "read", paneId], res, "herdr");
     return res.stdout;
   }
 }
 
 /** herdr's own reason for a failed call; never the error message, which carries argv and so the delivered text. */
-export const reasonOf = (e: unknown): string => (e instanceof ToolError ? (e.result.stderr || e.result.stdout).trim() : String(e));
+export const reasonOf = (e: unknown): string =>
+  e instanceof ToolError ? (e.result.stderr || e.result.stdout).trim() : String(e);

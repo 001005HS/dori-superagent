@@ -5,9 +5,11 @@ import { hcCall, isKind } from "./exec.ts";
 
 const REPORTED: ReadonlySet<string> = new Set(["idle", "working", "blocked", "error", "done"]);
 
-const rec = (value: unknown): Record<string, unknown> | undefined => (typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined);
+const rec = (value: unknown): Record<string, unknown> | undefined =>
+  typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 const text = (value: unknown): string | undefined => (typeof value === "string" && value !== "" ? value : undefined);
-const num = (value: unknown): number | undefined => (typeof value === "number" && Number.isFinite(value) ? value : undefined);
+const num = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isFinite(value) ? value : undefined;
 
 function foregroundOf(value: unknown): ForegroundProcess | undefined {
   const fg = rec(value);

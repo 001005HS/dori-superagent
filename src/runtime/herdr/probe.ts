@@ -53,7 +53,12 @@ export async function paneAgent(cli: HerdrCli, paneId: string): Promise<PaneAgen
   return status === "shell" ? { status, ...where } : { status, agent: String(pane["agent"]), ...where };
 }
 
-export type Front = { readonly shell: boolean; readonly pgid?: number; readonly rootPid?: number; readonly processes?: readonly ForegroundProcess[] };
+export type Front = {
+  readonly shell: boolean;
+  readonly pgid?: number;
+  readonly rootPid?: number;
+  readonly processes?: readonly ForegroundProcess[];
+};
 
 const toProcess = (value: unknown): ForegroundProcess => {
   const p = (value ?? {}) as { name?: unknown; argv?: unknown; pid?: unknown };
@@ -102,7 +107,8 @@ async function screenShowsIdle(cli: HerdrCli, paneId: string): Promise<boolean> 
 export async function probe(cli: HerdrCli, paneId: string, screenCheck = true): Promise<Probe> {
   const { status, agent, title, cwd } = await paneAgent(cli, paneId);
   if (status === "gone") return { status, shellInFront: true };
-  const seen: AgentStatus = screenCheck && status === "working" && (await screenShowsIdle(cli, paneId)) ? "idle" : status;
+  const seen: AgentStatus =
+    screenCheck && status === "working" && (await screenShowsIdle(cli, paneId)) ? "idle" : status;
   const front = await foreground(cli, paneId);
   return {
     status: seen,

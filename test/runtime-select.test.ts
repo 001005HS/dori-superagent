@@ -28,15 +28,51 @@ const pathWith = (...bins: string[]): string => {
 describe("readRuntimeChoice precedence", () => {
   const both = pathWith("herdr", "hc");
   test.each([
-    ["DORI_RUNTIME beats config and every detection", { DORI_RUNTIME: "hc", HERDR_PANE_ID: "w1:p1", PATH: both }, '{"runtime":"herdr"}', "hc", "env"],
-    ["DORI_RUNTIME=herdr inside an hc terminal", { DORI_RUNTIME: "herdr", HC_TERMINAL_ID: "t3", PATH: both }, undefined, "herdr", "env"],
-    ["config beats the caller's terminal", { HC_TERMINAL_ID: "t3", PATH: both }, '{"runtime":"herdr"}', "herdr", "config"],
+    [
+      "DORI_RUNTIME beats config and every detection",
+      { DORI_RUNTIME: "hc", HERDR_PANE_ID: "w1:p1", PATH: both },
+      '{"runtime":"herdr"}',
+      "hc",
+      "env",
+    ],
+    [
+      "DORI_RUNTIME=herdr inside an hc terminal",
+      { DORI_RUNTIME: "herdr", HC_TERMINAL_ID: "t3", PATH: both },
+      undefined,
+      "herdr",
+      "env",
+    ],
+    [
+      "config beats the caller's terminal",
+      { HC_TERMINAL_ID: "t3", PATH: both },
+      '{"runtime":"herdr"}',
+      "herdr",
+      "config",
+    ],
     ["config hc with only herdr installed", { PATH: pathWith("herdr") }, '{"runtime":"hc","other":1}', "hc", "config"],
-    ["HC_TERMINAL_ID beats HERDR_PANE_ID", { HC_TERMINAL_ID: "t3", HERDR_PANE_ID: "w1:p1", PATH: both }, "{}", "hc", "detect:HC_TERMINAL_ID"],
-    ["HERDR_PANE_ID beats PATH", { HERDR_PANE_ID: "w1:p1", PATH: pathWith("hc") }, undefined, "herdr", "detect:HERDR_PANE_ID"],
+    [
+      "HC_TERMINAL_ID beats HERDR_PANE_ID",
+      { HC_TERMINAL_ID: "t3", HERDR_PANE_ID: "w1:p1", PATH: both },
+      "{}",
+      "hc",
+      "detect:HC_TERMINAL_ID",
+    ],
+    [
+      "HERDR_PANE_ID beats PATH",
+      { HERDR_PANE_ID: "w1:p1", PATH: pathWith("hc") },
+      undefined,
+      "herdr",
+      "detect:HERDR_PANE_ID",
+    ],
     ["only herdr on PATH", { PATH: pathWith("herdr") }, undefined, "herdr", "detect:path"],
     ["only hc on PATH", { PATH: pathWith("hc") }, '{"other":true}', "hc", "detect:path"],
-    ["empty variables count as unset", { DORI_RUNTIME: "", HC_TERMINAL_ID: "", HERDR_PANE_ID: "", PATH: pathWith("hc") }, undefined, "hc", "detect:path"],
+    [
+      "empty variables count as unset",
+      { DORI_RUNTIME: "", HC_TERMINAL_ID: "", HERDR_PANE_ID: "", PATH: pathWith("hc") },
+      undefined,
+      "hc",
+      "detect:path",
+    ],
   ] as const)("%s", (_, env, configText, kind, source) => {
     const configPath = configText === undefined ? NO_CONFIG : config(configText);
     expect(readRuntimeChoice({ env, configPath })).toEqual({ kind, source });
@@ -93,11 +129,16 @@ describe("readRuntimeChoice refusals", () => {
   });
 
   test("an invalid DORI_RUNTIME is a ConfigError naming the variable and the value", () => {
-    expect(() => readRuntimeChoice({ env: { DORI_RUNTIME: "tmux" }, configPath: NO_CONFIG })).toThrow(/DORI_RUNTIME.*"tmux"/);
+    expect(() => readRuntimeChoice({ env: { DORI_RUNTIME: "tmux" }, configPath: NO_CONFIG })).toThrow(
+      /DORI_RUNTIME.*"tmux"/,
+    );
   });
 
   test("DORI_RUNTIME wins without reading a broken config", () => {
-    expect(readRuntimeChoice({ env: { DORI_RUNTIME: "herdr" }, configPath: config("not json") })).toEqual({ kind: "herdr", source: "env" });
+    expect(readRuntimeChoice({ env: { DORI_RUNTIME: "herdr" }, configPath: config("not json") })).toEqual({
+      kind: "herdr",
+      source: "env",
+    });
   });
 });
 
@@ -108,7 +149,10 @@ describe("readRuntimeChoice PATH detection is injectable", () => {
       asked.push(path);
       return path === "/b/hc";
     };
-    expect(readRuntimeChoice({ env: { PATH: "/a:/b" }, configPath: NO_CONFIG, exists })).toEqual({ kind: "hc", source: "detect:path" });
+    expect(readRuntimeChoice({ env: { PATH: "/a:/b" }, configPath: NO_CONFIG, exists })).toEqual({
+      kind: "hc",
+      source: "detect:path",
+    });
     expect(asked).toContain("/a/herdr");
     expect(asked).toContain("/b/hc");
   });
@@ -119,7 +163,9 @@ describe("readRuntimeChoice PATH detection is injectable", () => {
       asked.push(path);
       return false;
     };
-    expect(() => readRuntimeChoice({ env: { PATH: ":/a:" }, configPath: NO_CONFIG, exists })).toThrow(RuntimeChoiceError);
+    expect(() => readRuntimeChoice({ env: { PATH: ":/a:" }, configPath: NO_CONFIG, exists })).toThrow(
+      RuntimeChoiceError,
+    );
     expect(asked.every((p) => p.startsWith("/a/"))).toBe(true);
   });
 });

@@ -81,7 +81,8 @@ describe("interactiveShellInFront (#66), ported from the herdr parser", () => {
   });
 
   test("SHELLS covers the busybox and PowerShell names", () => {
-    for (const name of ["sh", "bash", "zsh", "fish", "busybox", "pwsh", "powershell"]) expect(SHELLS.has(name)).toBe(true);
+    for (const name of ["sh", "bash", "zsh", "fish", "busybox", "pwsh", "powershell"])
+      expect(SHELLS.has(name)).toBe(true);
     expect(SHELLS.has("omo")).toBe(false);
   });
 });
@@ -150,10 +151,22 @@ describe("Runtimes.kinds and selfAny", () => {
 
   test.each([
     ["an hc terminal", { HC_TERMINAL_ID: "t7" }, { runtime: "hc", id: "t7" }],
-    ["hc wins when both are set", { HC_TERMINAL_ID: "t7", HERDR_PANE_ID: "w1:p3", HERDR_WORKSPACE_ID: "w1" }, { runtime: "hc", id: "t7" }],
-    ["a herdr pane grouped by its workspace", { HERDR_PANE_ID: "w1:p3", HERDR_WORKSPACE_ID: "w1" }, { runtime: "herdr", id: "w1:p3", group: "w1" }],
+    [
+      "hc wins when both are set",
+      { HC_TERMINAL_ID: "t7", HERDR_PANE_ID: "w1:p3", HERDR_WORKSPACE_ID: "w1" },
+      { runtime: "hc", id: "t7" },
+    ],
+    [
+      "a herdr pane grouped by its workspace",
+      { HERDR_PANE_ID: "w1:p3", HERDR_WORKSPACE_ID: "w1" },
+      { runtime: "herdr", id: "w1:p3", group: "w1" },
+    ],
     ["a herdr pane without a workspace id has no group", { HERDR_PANE_ID: "w1:p3" }, { runtime: "herdr", id: "w1:p3" }],
-    ["empty variables are unset", { HC_TERMINAL_ID: "", HERDR_PANE_ID: "w2:p1", HERDR_WORKSPACE_ID: "" }, { runtime: "herdr", id: "w2:p1" }],
+    [
+      "empty variables are unset",
+      { HC_TERMINAL_ID: "", HERDR_PANE_ID: "w2:p1", HERDR_WORKSPACE_ID: "" },
+      { runtime: "herdr", id: "w2:p1" },
+    ],
     ["outside any runtime", {}, undefined],
   ] as const)("selfAny: %s", (_, env, want) => {
     const runtimes = make();
@@ -191,7 +204,9 @@ describe("openSession", () => {
         started = true;
       },
     } as unknown as SessionRuntime;
-    await expect(openSession(rt, { name: "x", cwd: "/", env: {}, role: "lead", container: "workspace-root" }, "omo")).rejects.toThrow("no space");
+    await expect(
+      openSession(rt, { name: "x", cwd: "/", env: {}, role: "lead", container: "workspace-root" }, "omo"),
+    ).rejects.toThrow("no space");
     expect(started).toBe(false);
   });
 });
@@ -224,7 +239,9 @@ describe("exec", () => {
     expect(err.message).toBe("hc get t7 failed (3): not found");
     expect(err.argv).toEqual(["get", "t7"]);
     expect(err.result.code).toBe(3);
-    expect(new ToolError(["x"], { code: 1, stdout: "from stdout", stderr: "" }, "herdr").message).toBe("herdr x failed (1): from stdout");
+    expect(new ToolError(["x"], { code: 1, stdout: "from stdout", stderr: "" }, "herdr").message).toBe(
+      "herdr x failed (1): from stdout",
+    );
   });
 
   test("spawnExec returns code, stdout and stderr of a real process", async () => {

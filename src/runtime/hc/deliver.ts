@@ -24,9 +24,14 @@ async function statusNow(exec: Exec, id: string): Promise<AgentStatus> {
  * `not-ready`; an unknown or finished terminal is `no-agent`; any other failure may have arrived and is
  * `ambiguous` (#89). No outcome, detail or failure carries the text.
  */
-export async function deliver(exec: Exec, id: string, text: string, opts: DeliverOptions = {}): Promise<DeliverOutcome> {
+export async function deliver(
+  exec: Exec,
+  id: string,
+  text: string,
+  opts: DeliverOptions = {},
+): Promise<DeliverOutcome> {
   const { when = "idle", force = false } = opts;
-  let before;
+  let before: Awaited<ReturnType<typeof probe>>;
   try {
     before = await probe(exec, id);
   } catch (e) {
@@ -34,7 +39,8 @@ export async function deliver(exec: Exec, id: string, text: string, opts: Delive
     return { kind: "not-ready", status: "unknown" };
   }
   if (before.status === "gone" || before.shellInFront) return { kind: "no-agent" };
-  if (!force && (before.status === "blocked" || before.status === "error")) return { kind: "not-ready", status: before.status };
+  if (!force && (before.status === "blocked" || before.status === "error"))
+    return { kind: "not-ready", status: before.status };
   // `done` is the program's own "turn finished, waiting": typing is what it waits for, and `--if` takes only idle|working.
   const gate = when === "any" || (when === "idle" && before.status === "done") ? [] : ["--if", when];
   const argv = ["send", id, ...gate, ...(force ? ["--force"] : []), "--", text];
@@ -45,8 +51,15 @@ export async function deliver(exec: Exec, id: string, text: string, opts: Delive
     if (isKind(e, "blocked")) return { kind: "not-ready", status: "blocked" };
     if (isKind(e, "status_mismatch")) return { kind: "not-ready", status: await statusNow(exec, id) };
     if (isKind(e, "not_found", "finished")) return { kind: "no-agent" };
-    const detail = scrub(e instanceof Error && "reason" in e && typeof e.reason === "string" ? e.reason : messageOf(e), text);
-    return { kind: "ambiguous", detail: detail || "hc send did not complete", failure: e instanceof Error ? new Error(scrub(e.message, text)) : detail };
+    const detail = scrub(
+      e instanceof Error && "reason" in e && typeof e.reason === "string" ? e.reason : messageOf(e),
+      text,
+    );
+    return {
+      kind: "ambiguous",
+      detail: detail || "hc send did not complete",
+      failure: e instanceof Error ? new Error(scrub(e.message, text)) : detail,
+    };
   }
   const turn = typeof result["turn"] === "number" ? result["turn"] : undefined;
   const started = typeof result["started"] === "boolean" ? result["started"] : undefined;

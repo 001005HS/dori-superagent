@@ -1,6 +1,11 @@
 export type RuntimeKind = "herdr" | "hc";
 /** One session as its runtime addresses it. `group`: the herdr workspace id or the hc dori.group label. `container`: the herdr tab id (absent on hc). */
-export type SessionRef = { readonly runtime: RuntimeKind; readonly id: string; readonly group?: string; readonly container?: string };
+export type SessionRef = {
+  readonly runtime: RuntimeKind;
+  readonly id: string;
+  readonly group?: string;
+  readonly container?: string;
+};
 export type AgentStatus = "idle" | "working" | "blocked" | "error" | "done" | "unknown" | "shell" | "gone";
 export type AgentIdentity = { readonly agent?: string; readonly pgid?: number };
 export type ForegroundProcess = { readonly name: string; readonly argv: readonly string[]; readonly pid?: number };
@@ -16,7 +21,14 @@ export type Probe = {
   readonly shellInFront: boolean;
   readonly foreground?: readonly ForegroundProcess[];
 };
-export type SessionInfo = { readonly ref: SessionRef; readonly name?: string; readonly title?: string; readonly cwd?: string; readonly status?: AgentStatus; readonly agent?: string };
+export type SessionInfo = {
+  readonly ref: SessionRef;
+  readonly name?: string;
+  readonly title?: string;
+  readonly cwd?: string;
+  readonly status?: AgentStatus;
+  readonly agent?: string;
+};
 export type SessionRole = "lead" | "duty" | "duty-loop" | "hourly-loop" | "lane";
 /**
  * Where the session is created. herdr: "workspace-root" = `workspace create` (the root pane is the session; the new workspace id
@@ -83,7 +95,11 @@ export const parseRef: (text: string) => SessionRef | undefined = (text) => {
 };
 export const formatRef: (ref: SessionRef) => string = (ref) => `${ref.runtime}:${ref.id}`;
 /** create + start in one call (the root harness path). */
-export const openSession: (rt: SessionRuntime, spec: CreateSpec, command: string) => Promise<SessionRef> = async (rt, spec, command) => {
+export const openSession: (rt: SessionRuntime, spec: CreateSpec, command: string) => Promise<SessionRef> = async (
+  rt,
+  spec,
+  command,
+) => {
   const ref = await rt.create(spec);
   await rt.start(ref, command);
   return ref;

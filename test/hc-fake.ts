@@ -32,13 +32,41 @@ export type FakeKnobs = {
   getError?: string;
 };
 
-const EXIT: Readonly<Record<string, number>> = { usage: 2, not_found: 3, machine_unknown: 4, unavailable: 5, invalid_params: 6, needs_target: 7, config: 8, blocked: 9, status_mismatch: 10, finished: 11, live: 1, name_taken: 1 };
+const EXIT: Readonly<Record<string, number>> = {
+  usage: 2,
+  not_found: 3,
+  machine_unknown: 4,
+  unavailable: 5,
+  invalid_params: 6,
+  needs_target: 7,
+  config: 8,
+  blocked: 9,
+  status_mismatch: 10,
+  finished: 11,
+  live: 1,
+  name_taken: 1,
+};
 
 const ok = (value: unknown): ExecResult => ({ code: 0, stdout: `${JSON.stringify(value)}\n`, stderr: "" });
-const fail = (kind: string, message: string): ExecResult => ({ code: EXIT[kind] ?? 1, stdout: "", stderr: `${JSON.stringify({ error: { hint: `hint for ${kind}`, kind, message } })}\n` });
+const fail = (kind: string, message: string): ExecResult => ({
+  code: EXIT[kind] ?? 1,
+  stdout: "",
+  stderr: `${JSON.stringify({ error: { hint: `hint for ${kind}`, kind, message } })}\n`,
+});
 
 export function terminal(over: Partial<FakeTerminal> = {}): FakeTerminal {
-  return { state: "live", pid: 900, title: "omo lane", cwd: "/w", status: { state: "idle", app: "omo" }, reported: true, turn: 3, foreground: { name: "omo", argv: ["omo"], pid: 4242 }, labels: {}, ...over };
+  return {
+    state: "live",
+    pid: 900,
+    title: "omo lane",
+    cwd: "/w",
+    status: { state: "idle", app: "omo" },
+    reported: true,
+    turn: 3,
+    foreground: { name: "omo", argv: ["omo"], pid: 4242 },
+    labels: {},
+    ...over,
+  };
 }
 
 export class FakeHc {
@@ -71,7 +99,9 @@ export class FakeHc {
       case "send":
         return this.send(id, t, args);
       case "keys":
-        return t.state === "finished" ? fail("finished", `${id} has finished`) : ok({ status: t.status?.state ?? null, turn: t.turn });
+        return t.state === "finished"
+          ? fail("finished", `${id} has finished`)
+          : ok({ status: t.status?.state ?? null, turn: t.turn });
       case "kill":
         t.state = "finished";
         return ok({ address: id, ...t });
@@ -95,7 +125,10 @@ export class FakeHc {
     const nameAt = args.indexOf("--name");
     const name = nameAt >= 0 ? args[nameAt + 1] : undefined;
     const id = `t${this.next++}`;
-    this.terminals.set(id, terminal({ labels, status: null, reported: false, turn: 0, ...(name === undefined ? {} : { name }) }));
+    this.terminals.set(
+      id,
+      terminal({ labels, status: null, reported: false, turn: 0, ...(name === undefined ? {} : { name }) }),
+    );
     return ok({ address: id, state: "live", labels });
   }
 
@@ -103,8 +136,18 @@ export class FakeHc {
     const want = args.flatMap((a, i) => (a === "--label" && args[i + 1] !== undefined ? [args[i + 1] ?? ""] : []));
     const rows = [...this.terminals.entries()]
       .filter(([, t]) => t.state === "live" || args.includes("--all"))
-      .filter(([, t]) => want.every((kv) => `${kv.split("=")[0]}=${t.labels[kv.split("=")[0] ?? ""] ?? "\u0000"}` === kv))
-      .map(([address, t]) => ({ address, agent: t.foreground?.name, cwd: "/w", state: t.state, turn: t.turn, ...(t.name === undefined ? {} : { name: t.name }), ...(t.status === null ? {} : { status: t.status.state }) }));
+      .filter(([, t]) =>
+        want.every((kv) => `${kv.split("=")[0]}=${t.labels[kv.split("=")[0] ?? ""] ?? "\u0000"}` === kv),
+      )
+      .map(([address, t]) => ({
+        address,
+        agent: t.foreground?.name,
+        cwd: "/w",
+        state: t.state,
+        turn: t.turn,
+        ...(t.name === undefined ? {} : { name: t.name }),
+        ...(t.status === null ? {} : { status: t.status.state }),
+      }));
     return ok({ hidden_finished: 0, machines: [], terminals: rows });
   }
 
@@ -117,7 +160,8 @@ export class FakeHc {
     if (t.status?.state === "blocked" && !args.includes("--force")) return fail("blocked", `${id} is blocked`);
     const ifAt = args.indexOf("--if");
     const want = ifAt >= 0 ? args[ifAt + 1] : undefined;
-    if (want !== undefined && t.status?.state !== want) return fail("status_mismatch", `${id} is ${t.status?.state ?? "unreported"}`);
+    if (want !== undefined && t.status?.state !== want)
+      return fail("status_mismatch", `${id} is ${t.status?.state ?? "unreported"}`);
     const text = args[args.length - 1] ?? "";
     this.sent.push({ id, text });
     t.turn += 1;

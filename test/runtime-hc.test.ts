@@ -13,11 +13,22 @@ function rig(initial: Record<string, FakeTerminal> = {}, env: Record<string, str
   const fake = new FakeHc(initial);
   const sleeps: number[] = [];
   const logs: string[] = [];
-  const rt = new HcRuntime(fake.exec, { env, sleep: async (ms) => void sleeps.push(ms), log: (line) => void logs.push(line) });
+  const rt = new HcRuntime(fake.exec, {
+    env,
+    sleep: async (ms) => void sleeps.push(ms),
+    log: (line) => void logs.push(line),
+  });
   return { fake, rt, sleeps, logs };
 }
 
-const lane: CreateSpec = { name: "Lane K", cwd: "/w", env: { A: "1", B: "it's a b" }, role: "lane", container: "tab", group: "g1" };
+const lane: CreateSpec = {
+  name: "Lane K",
+  cwd: "/w",
+  env: { A: "1", B: "it's a b" },
+  role: "lane",
+  container: "tab",
+  group: "g1",
+};
 const SH = { SHELL: "/bin/zsh" };
 
 describe("create / start / createGroup", () => {
@@ -27,7 +38,29 @@ describe("create / start / createGroup", () => {
     expect(ref).toEqual({ runtime: "hc", id: "t1", group: "g1" });
     expect(fake.calls).toEqual([
       ["ls"],
-      ["run", "--bg", "--no-parent", "--no-notify", "--cwd", "/w", "--label", "dori.group=g1", "--label", "dori.role=lane", "--label", "dori.name=Lane K", "--label", "dori.lane=Lane K", "--name", "lane-k", "--", "env", "A=1", "B=it's a b", "/bin/zsh"],
+      [
+        "run",
+        "--bg",
+        "--no-parent",
+        "--no-notify",
+        "--cwd",
+        "/w",
+        "--label",
+        "dori.group=g1",
+        "--label",
+        "dori.role=lane",
+        "--label",
+        "dori.name=Lane K",
+        "--label",
+        "dori.lane=Lane K",
+        "--name",
+        "lane-k",
+        "--",
+        "env",
+        "A=1",
+        "B=it's a b",
+        "/bin/zsh",
+      ],
     ]);
   });
 
@@ -35,7 +68,25 @@ describe("create / start / createGroup", () => {
     const { fake, rt } = rig();
     const ref = await rt.create({ name: "lead", cwd: "/r", env: {}, role: "lead", container: "workspace-root" });
     expect(ref).toEqual({ runtime: "hc", id: "t1", group: "dori" });
-    expect(fake.calls[1]).toEqual(["run", "--bg", "--no-parent", "--no-notify", "--cwd", "/r", "--label", "dori.group=dori", "--label", "dori.role=lead", "--label", "dori.name=lead", "--name", "lead", "--", "env", "sh"]);
+    expect(fake.calls[1]).toEqual([
+      "run",
+      "--bg",
+      "--no-parent",
+      "--no-notify",
+      "--cwd",
+      "/r",
+      "--label",
+      "dori.group=dori",
+      "--label",
+      "dori.role=lead",
+      "--label",
+      "dori.name=lead",
+      "--name",
+      "lead",
+      "--",
+      "env",
+      "sh",
+    ]);
   });
 
   test("start sends the command into the shell with no status gate", async () => {
@@ -97,13 +148,34 @@ describe("slugName", () => {
 
 describe("probe", () => {
   test.each([
-    ["idle", terminal(), { status: "idle", agent: "omo", pgid: 4242, rootPid: 900, turn: 3, title: "omo lane", cwd: "/w", shellInFront: false }],
+    [
+      "idle",
+      terminal(),
+      {
+        status: "idle",
+        agent: "omo",
+        pgid: 4242,
+        rootPid: 900,
+        turn: 3,
+        title: "omo lane",
+        cwd: "/w",
+        shellInFront: false,
+      },
+    ],
     ["working", terminal({ status: { state: "working", app: "omo" } }), { status: "working", agent: "omo" }],
     ["blocked", terminal({ status: { state: "blocked", app: "omo" } }), { status: "blocked" }],
     ["error", terminal({ status: { state: "error", app: "omo" } }), { status: "error" }],
     ["done", terminal({ status: { state: "done", app: "omo" } }), { status: "done" }],
-    ["unreported shell", terminal({ status: null, reported: false, foreground: { name: "bash", argv: ["/bin/bash"], pid: 7 } }), { status: "shell", agent: "bash", pgid: 7, shellInFront: true }],
-    ["unreported program", terminal({ status: null, reported: false, foreground: { name: "node", argv: ["node", "x.js"], pid: 8 } }), { status: "unknown", agent: "node", shellInFront: false }],
+    [
+      "unreported shell",
+      terminal({ status: null, reported: false, foreground: { name: "bash", argv: ["/bin/bash"], pid: 7 } }),
+      { status: "shell", agent: "bash", pgid: 7, shellInFront: true },
+    ],
+    [
+      "unreported program",
+      terminal({ status: null, reported: false, foreground: { name: "node", argv: ["node", "x.js"], pid: 8 } }),
+      { status: "unknown", agent: "node", shellInFront: false },
+    ],
     ["finished", terminal({ state: "finished" }), { status: "gone" }],
     ["unknown word", terminal({ status: { state: "thinking" } }), { status: "unknown", agent: "omo" }],
   ] as const)("%s", async (_, t, want) => {
@@ -125,8 +197,29 @@ describe("probe", () => {
   });
 
   test("parseProbe reads hc's own get shape (the live bash terminal this host has)", () => {
-    const live = { address: "t1", argv: ["/bin/bash"], cwd: "/h", foreground: { argv: ["/bin/bash"], cwd: "/h", name: "bash", pid: 11 }, pid: 11, reported: false, state: "live", status: null, title: "u@h: ~", turn: 0 };
-    expect(parseProbe(live)).toEqual({ status: "shell", agent: "bash", pgid: 11, rootPid: 11, turn: 0, title: "u@h: ~", cwd: "/h", shellInFront: true, foreground: [{ name: "bash", argv: ["/bin/bash"], pid: 11 }] });
+    const live = {
+      address: "t1",
+      argv: ["/bin/bash"],
+      cwd: "/h",
+      foreground: { argv: ["/bin/bash"], cwd: "/h", name: "bash", pid: 11 },
+      pid: 11,
+      reported: false,
+      state: "live",
+      status: null,
+      title: "u@h: ~",
+      turn: 0,
+    };
+    expect(parseProbe(live)).toEqual({
+      status: "shell",
+      agent: "bash",
+      pgid: 11,
+      rootPid: 11,
+      turn: 0,
+      title: "u@h: ~",
+      cwd: "/h",
+      shellInFront: true,
+      foreground: [{ name: "bash", argv: ["/bin/bash"], pid: 11 }],
+    });
   });
 });
 
@@ -153,8 +246,16 @@ describe("deliver", () => {
   });
 
   test.each([
-    ["shell in front, unreported", terminal({ status: null, reported: false, foreground: { name: "bash", argv: ["bash"], pid: 1 } }), { kind: "no-agent" }],
-    ["shell in front while the agent last reported idle (suspended agent)", terminal({ foreground: { name: "zsh", argv: ["-zsh"], pid: 1 } }), { kind: "no-agent" }],
+    [
+      "shell in front, unreported",
+      terminal({ status: null, reported: false, foreground: { name: "bash", argv: ["bash"], pid: 1 } }),
+      { kind: "no-agent" },
+    ],
+    [
+      "shell in front while the agent last reported idle (suspended agent)",
+      terminal({ foreground: { name: "zsh", argv: ["-zsh"], pid: 1 } }),
+      { kind: "no-agent" },
+    ],
     ["finished", terminal({ state: "finished" }), { kind: "no-agent" }],
     ["blocked without force", terminal({ status: { state: "blocked" } }), { kind: "not-ready", status: "blocked" }],
     ["error without force", terminal({ status: { state: "error" } }), { kind: "not-ready", status: "error" }],
@@ -166,13 +267,20 @@ describe("deliver", () => {
 
   test.each([
     ["working", terminal({ status: { state: "working" } }), "working"],
-    ["unreported program", terminal({ status: null, reported: false, foreground: { name: "node", argv: ["node"], pid: 1 } }), "unknown"],
-  ] as const)("%s under the default when=idle: hc refuses the compare-and-send, nothing typed", async (_, term, status) => {
-    const { fake, rt } = rig({ t1: term });
-    expect(await rt.deliver(T1, "x")).toEqual({ kind: "not-ready", status });
-    expect(fake.calls.filter((c) => c[0] === "send")).toEqual([["send", "t1", "--if", "idle", "--", "x"]]);
-    expect(fake.sent).toEqual([]);
-  });
+    [
+      "unreported program",
+      terminal({ status: null, reported: false, foreground: { name: "node", argv: ["node"], pid: 1 } }),
+      "unknown",
+    ],
+  ] as const)(
+    "%s under the default when=idle: hc refuses the compare-and-send, nothing typed",
+    async (_, term, status) => {
+      const { fake, rt } = rig({ t1: term });
+      expect(await rt.deliver(T1, "x")).toEqual({ kind: "not-ready", status });
+      expect(fake.calls.filter((c) => c[0] === "send")).toEqual([["send", "t1", "--if", "idle", "--", "x"]]);
+      expect(fake.sent).toEqual([]);
+    },
+  );
 
   test("when=working sends --if working", async () => {
     const { fake, rt } = rig({ t1: terminal({ status: { state: "working", app: "omo" } }) });
@@ -213,9 +321,24 @@ describe("deliver", () => {
   });
 
   const transport: [string, (f: FakeHc) => void][] = [
-    ["a non-JSON failure", (f) => void (f.knobs.sendGarbled = true)],
-    ["a runner that throws", (f) => void (f.knobs.sendThrows = true)],
-    ["an unavailable core", (f) => void (f.knobs.sendError = "unavailable")],
+    [
+      "a non-JSON failure",
+      (f) => {
+        f.knobs.sendGarbled = true;
+      },
+    ],
+    [
+      "a runner that throws",
+      (f) => {
+        f.knobs.sendThrows = true;
+      },
+    ],
+    [
+      "an unavailable core",
+      (f) => {
+        f.knobs.sendError = "unavailable";
+      },
+    ],
   ];
   test.each(transport)("%s is ambiguous and never carries the text", async (_, arm) => {
     const { fake, rt } = rig({ t1: terminal() });
@@ -236,7 +359,9 @@ describe("typed text, shells, keys", () => {
   });
 
   test("typeIntoShell sends into an unreported shell without a status gate", async () => {
-    const { fake, rt } = rig({ t1: terminal({ status: null, reported: false, foreground: { name: "zsh", argv: ["-zsh"], pid: 2 } }) });
+    const { fake, rt } = rig({
+      t1: terminal({ status: null, reported: false, foreground: { name: "zsh", argv: ["-zsh"], pid: 2 } }),
+    });
     expect(await rt.typeIntoShell(T1, "ls -la")).toBe(true);
     expect(fake.calls.filter((c) => c[0] === "send")).toEqual([["send", "t1", "--", "ls -la"]]);
   });
@@ -264,7 +389,10 @@ describe("close, list, self", () => {
   test("close kills then removes, whatever the scope", async () => {
     const { fake, rt, sleeps } = rig({ t1: terminal() });
     await rt.close(T1, "container");
-    expect(fake.calls).toEqual([["kill", "t1"], ["rm", "t1"]]);
+    expect(fake.calls).toEqual([
+      ["kill", "t1"],
+      ["rm", "t1"],
+    ]);
     expect(sleeps).toEqual([]);
     expect(fake.terminals.has("t1")).toBe(false);
   });
@@ -293,7 +421,11 @@ describe("close, list, self", () => {
   });
 
   test("list filters by the dori.group label and keeps only this core's terminals", async () => {
-    const { fake, rt } = rig({ t1: terminal({ labels: { "dori.group": "g1" } }), t2: terminal({ labels: { "dori.group": "g2" } }), t3: terminal({ labels: { "dori.group": "g1" } }) });
+    const { fake, rt } = rig({
+      t1: terminal({ labels: { "dori.group": "g1" } }),
+      t2: terminal({ labels: { "dori.group": "g2" } }),
+      t3: terminal({ labels: { "dori.group": "g1" } }),
+    });
     expect(await rt.list({ group: "g1" })).toEqual([
       { ref: { runtime: "hc", id: "t1", group: "g1" }, cwd: "/w", status: "idle", agent: "omo" },
       { ref: { runtime: "hc", id: "t3", group: "g1" }, cwd: "/w", status: "idle", agent: "omo" },
@@ -320,14 +452,20 @@ describe("close, list, self", () => {
 
 describe("hcCall", () => {
   test("parses hc's error JSON from stderr, hint either at error.hint or error.data.hint", async () => {
-    const exec = async () => ({ code: 3, stdout: "", stderr: JSON.stringify({ error: { kind: "not_found", message: "no terminal", data: { hint: "see ls" } } }) });
+    const exec = async () => ({
+      code: 3,
+      stdout: "",
+      stderr: JSON.stringify({ error: { kind: "not_found", message: "no terminal", data: { hint: "see ls" } } }),
+    });
     const err = await hcCall(exec, ["get", "t5"]).catch((e: unknown) => e);
     expect(err).toMatchObject({ kind: "not_found", hint: "see ls", reason: "no terminal" });
   });
 
   test("redacts the delivered text; with no JSON the kind falls back to hc's exit-code table", async () => {
     const exec = async () => ({ code: 5, stdout: "", stderr: "boom" });
-    const err = (await hcCall(exec, ["send", "t1", "--", "secret text"], { redact: "secret text" }).catch((e: unknown) => e)) as HcError;
+    const err = (await hcCall(exec, ["send", "t1", "--", "secret text"], { redact: "secret text" }).catch(
+      (e: unknown) => e,
+    )) as HcError;
     expect(err.kind).toBe("unavailable");
     expect(err.argv).toEqual(["--json", "send", "t1", "--", "<text>"]);
     expect(err.message).not.toContain("secret text");

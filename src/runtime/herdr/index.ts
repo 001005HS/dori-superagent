@@ -1,11 +1,23 @@
 import { type Exec, spawnExec } from "../exec.ts";
-import type { AgentIdentity, CloseScope, CreateSpec, DeliverOptions, DeliverOutcome, Key, Probe, SessionInfo, SessionRef, SessionRuntime, SubmitResult } from "../types.ts";
+import type {
+  AgentIdentity,
+  CloseScope,
+  CreateSpec,
+  DeliverOptions,
+  DeliverOutcome,
+  Key,
+  Probe,
+  SessionInfo,
+  SessionRef,
+  SessionRuntime,
+  SubmitResult,
+} from "../types.ts";
 import { deliver, keys, type Sleep, submitTyped, typeIntoShell } from "./deliver.ts";
 import { HerdrCli } from "./exec.ts";
 import { probe } from "./probe.ts";
 import { close, create, createGroup, type Env, list, self, start } from "./sessions.ts";
 
-export { ENTER_ATTEMPTS, PASTE_SETTLE_MS, type Sleep } from "./deliver.ts";
+export type { Sleep } from "./deliver.ts";
 export { HerdrError } from "./exec.ts";
 export { omoScreenIdle } from "./probe.ts";
 
@@ -18,7 +30,11 @@ export class HerdrRuntime implements SessionRuntime {
   private readonly env: Env;
   private readonly sleep: Sleep;
 
-  constructor(exec: Exec = spawnExec, session: string | undefined = process.env["DORI_HERDR_SESSION"], options: HerdrOptions = {}) {
+  constructor(
+    exec: Exec = spawnExec,
+    session: string | undefined = process.env["DORI_HERDR_SESSION"],
+    options: HerdrOptions = {},
+  ) {
     this.cli = new HerdrCli(exec, session);
     this.env = options.env ?? process.env;
     this.sleep = options.sleep ?? ((ms) => Bun.sleep(ms));

@@ -10,12 +10,17 @@ export const RM_RETRY_MS = 200;
 
 /** hc's name rule: 1-32 of a-z 0-9 - _ . (lowercased, anything else becomes `-`); undefined when nothing is left. */
 export function slugName(name: string): string | undefined {
-  const slug = name.toLowerCase().replace(/[^a-z0-9._-]/g, "-").slice(0, NAME_MAX);
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, "-")
+    .slice(0, NAME_MAX);
   return slug === "" ? undefined : slug;
 }
 
 const rows = (result: Record<string, unknown>): Record<string, unknown>[] =>
-  Array.isArray(result["terminals"]) ? result["terminals"].filter((t): t is Record<string, unknown> => typeof t === "object" && t !== null) : [];
+  Array.isArray(result["terminals"])
+    ? result["terminals"].filter((t): t is Record<string, unknown> => typeof t === "object" && t !== null)
+    : [];
 const str = (value: unknown): string | undefined => (typeof value === "string" && value !== "" ? value : undefined);
 // Addresses with a machine prefix (`machine/t7`) are another core's terminals, mirrored into this core's list.
 const isLocal = (address: string | undefined): address is string => address !== undefined && !address.includes("/");
@@ -31,13 +36,27 @@ async function liveNames(exec: Exec): Promise<Set<string>> {
 
 /** The `hc run` argv for a spec: labels for grouping, the env through the `env` utility (one argv element per K=V). */
 export function createArgv(spec: CreateSpec, shell: string, name: string | undefined): string[] {
-  for (const key of Object.keys(spec.env)) if (!ENV_KEY.test(key)) throw new Error(`env key ${JSON.stringify(key)} is not a shell variable name`);
-  const labels = [`dori.group=${spec.group ?? "dori"}`, `dori.role=${spec.role}`, `dori.name=${spec.name}`, ...(spec.role === "lane" ? [`dori.lane=${spec.name}`] : [])];
+  for (const key of Object.keys(spec.env))
+    if (!ENV_KEY.test(key)) throw new Error(`env key ${JSON.stringify(key)} is not a shell variable name`);
+  const labels = [
+    `dori.group=${spec.group ?? "dori"}`,
+    `dori.role=${spec.role}`,
+    `dori.name=${spec.name}`,
+    ...(spec.role === "lane" ? [`dori.lane=${spec.name}`] : []),
+  ];
   return [
-    "run", "--bg", "--no-parent", "--no-notify", "--cwd", spec.cwd,
+    "run",
+    "--bg",
+    "--no-parent",
+    "--no-notify",
+    "--cwd",
+    spec.cwd,
     ...labels.flatMap((l) => ["--label", l]),
     ...(name === undefined ? [] : ["--name", name]),
-    "--", "env", ...Object.entries(spec.env).map(([k, v]) => `${k}=${v}`), shell,
+    "--",
+    "env",
+    ...Object.entries(spec.env).map(([k, v]) => `${k}=${v}`),
+    shell,
   ];
 }
 
@@ -89,7 +108,12 @@ export async function list(exec: Exec, group: string | undefined): Promise<Sessi
  * Kill, then remove the record. A program that takes a moment to die makes `rm` answer `live`: retried 5 times
  * 200 ms apart; still live after that is logged (the kill was sent), not thrown. An unknown terminal is already closed.
  */
-export async function close(exec: Exec, id: string, sleep: (ms: number) => Promise<void>, log: (line: string) => void): Promise<void> {
+export async function close(
+  exec: Exec,
+  id: string,
+  sleep: (ms: number) => Promise<void>,
+  log: (line: string) => void,
+): Promise<void> {
   try {
     await hcCall(exec, ["kill", id]);
   } catch (e) {

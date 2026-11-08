@@ -1,11 +1,21 @@
 import type { Exec } from "../exec.ts";
 import { spawnExec } from "../exec.ts";
-import type { AgentIdentity, CloseScope, CreateSpec, DeliverOptions, DeliverOutcome, Key, Probe, SessionInfo, SessionRef, SessionRuntime, SubmitResult } from "../types.ts";
+import type {
+  AgentIdentity,
+  CloseScope,
+  CreateSpec,
+  DeliverOptions,
+  DeliverOutcome,
+  Key,
+  Probe,
+  SessionInfo,
+  SessionRef,
+  SessionRuntime,
+  SubmitResult,
+} from "../types.ts";
 import { deliver, keys, read, typeIntoShell } from "./deliver.ts";
 import { probe } from "./probe.ts";
 import { close, create, list, selfRef, start } from "./sessions.ts";
-
-export { HcError } from "./exec.ts";
 
 export type HcRuntimeOptions = {
   readonly env?: Readonly<Record<string, string | undefined>>;
