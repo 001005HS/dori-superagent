@@ -5,8 +5,15 @@ import { shq } from "../src/delivery.ts";
 
 // One isolated hc core for the whole file: its own HC_SESSION and XDG dirs, so the host's own cores are never reached.
 export const hcBin = Bun.which("hc");
-export const session = `dori-e2e-${process.pid}`;
-const root = mkdtempSync(join(tmpdir(), "dori-hc-"));
+export const session = `e2e-${process.pid}`;
+// A Unix socket path is capped at ~107 bytes: the core's socket lands at <root>/r/herdr-core/<session>.sock, so the
+// root stays short. os.tmpdir() is used only while it is short enough; a long TMPDIR (some CI runners) falls back to /tmp.
+const SOCKET_PATH_MAX = 100;
+const base =
+  tmpdir().length + "/dhc-XXXXXX/r/herdr-core/".length + session.length + ".sock".length <= SOCKET_PATH_MAX
+    ? tmpdir()
+    : "/tmp";
+const root = mkdtempSync(join(base, "dhc-"));
 const [state, run, config] = [join(root, "s"), join(root, "r"), join(root, "c")];
 const cli = resolve(import.meta.dir, "../src/cli.ts");
 export const fixture = resolve(import.meta.dir, "fixtures/fake-agent-7501.sh");
@@ -19,6 +26,8 @@ const {
   HERDR_PANE_ID: _pane,
   HERDR_WORKSPACE_ID: _ws,
   DORI_CMD: _cmd,
+  DORI_LANE: _lane,
+  DORI_PROMPTS_DIR: _prompts,
   ...outer
 } = process.env;
 const hcEnv = { ...outer, HC_SESSION: session, XDG_STATE_HOME: state, XDG_RUNTIME_DIR: run, XDG_CONFIG_HOME: config };
