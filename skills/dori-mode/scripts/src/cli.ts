@@ -18,7 +18,7 @@ import { realClock, run } from "./run.ts";
 import { syncRegistry } from "./sync.ts";
 import { canLaunch } from "./routing.ts";
 import { fetchHttp, MessengerError, UnsafeMessageError } from "./messenger/http.ts";
-import { Slack } from "./messenger/slack.ts";
+import { Slack, type SlackAuth } from "./messenger/slack.ts";
 import { pollSlackInbound } from "./messenger/slack-inbound.ts";
 import { envInt, fileTgInboundStore, telegramInboundLoop } from "./messenger/telegram-inbound.ts";
 import { ThreadLedger } from "./messenger/thread-ledger.ts";
@@ -152,10 +152,16 @@ const ceiling = (name: string): number | null | undefined => {
 };
 
 const lane = async (k: string | undefined) => {
-  const found = k ? await deps.registry.read(k) : await deps.registry.byPane(process.env.HERDR_PANE_ID ?? "");
+  const found = k ? await deps.registry.read(k) : await deps.registry.byPane(process.env["HERDR_PANE_ID"] ?? "");
   if (!found) return die(k ? `no registered lane "${k}"` : "no open lane is registered for this pane");
   if (statusOf(found) === "closed") return die(`lane ${found.key} is already closed`);
   return found;
+};
+
+/** Slack credentials from the environment; the cookie is optional. */
+const slackAuth = (token: string): SlackAuth => {
+  const cookie = process.env["DORI_SLACK_COOKIE"];
+  return { token, ...(cookie !== undefined ? { cookie } : {}) };
 };
 
 const every = async (minutes: number, tick: () => Promise<void>): Promise<void> => {
@@ -180,14 +186,17 @@ try {
       const wallMinutes = ceiling("wall-minutes"),
         tokens = ceiling("token-limit"),
         costUsd = ceiling("cost-limit");
+      const thread = opt("thread"),
+        model = opt("model"),
+        cwd = opt("cwd");
       const input: LaunchInput = {
         key: key ?? "",
         title: need("title"),
         brief: need("brief"),
         done: need("done"),
-        thread: opt("thread"),
-        model: opt("model"),
-        cwd: opt("cwd"),
+        ...(thread !== undefined ? { thread } : {}),
+        ...(model !== undefined ? { model } : {}),
+        ...(cwd !== undefined ? { cwd } : {}),
         budget: {
           ...(wallMinutes !== undefined ? { wallMinutes } : {}),
           ...(tokens !== undefined ? { tokens } : {}),
@@ -208,12 +217,13 @@ try {
       process.exit(r.startup.startsWith("STARTUP_OK") ? 0 : 3);
     }
     case "adopt": {
+      const thread = opt("thread");
       const l = await adoptLane(deps, {
         key: key ?? "",
         title: need("title"),
         brief: need("brief"),
         done: need("done"),
-        thread: opt("thread"),
+        ...(thread !== undefined ? { thread } : {}),
         pane: need("pane"),
       });
       console.log(`ADOPTED ${l.key} pane=${l.pane} thread=${l.thread}`);
@@ -231,11 +241,11 @@ try {
       break;
     }
     case "boot": {
-      const token = process.env.DORI_SLACK_TOKEN;
-      const slack = token ? new Slack(fetchHttp, realClock, { token, cookie: process.env.DORI_SLACK_COOKIE }) : null;
+      const token = process.env["DORI_SLACK_TOKEN"];
+      const slack = token ? new Slack(fetchHttp, realClock, slackAuth(token)) : null;
       const sessionDirs = [
-        process.env.PI_SESSION_DIR,
-        process.env.PI_SESSION_FILE && dirname(process.env.PI_SESSION_FILE),
+        process.env["PI_SESSION_DIR"],
+        process.env["PI_SESSION_FILE"] && dirname(process.env["PI_SESSION_FILE"]),
       ];
       const r = await bootCheck({
         ...deps,
@@ -254,7 +264,7 @@ try {
       // security boundary, since it reads only $HERDR_PANE_ID (env -u gets past it) and a direct write to
       // lessons.jsonl skips the CLI.
       const paneLane = async () => {
-        const pane = process.env.HERDR_PANE_ID;
+        const pane = process.env["HERDR_PANE_ID"];
         return pane ? await deps.registry.byPane(pane) : null;
       };
       switch (key) {
@@ -389,10 +399,12 @@ try {
     }
     case "verify-pr": {
       const repo = key ?? die("verify-pr needs owner/repo and a PR number");
+      const expectedIdentity = config.repoIdentities[repo.toLowerCase()],
+        cwd = opt("cwd");
       const result = await verifyPr(repo, Number(flags.positionals[1]), run, {
-        expectedIdentity: config.repoIdentities[repo.toLowerCase()],
+        ...(expectedIdentity !== undefined ? { expectedIdentity } : {}),
         loopCount: Number(opt("loop") ?? 20),
-        cwd: opt("cwd"),
+        ...(cwd !== undefined ? { cwd } : {}),
       });
       console.log(formatVerifyPr(result));
       process.exit(result.ok ? 0 : 2);
@@ -438,7 +450,7 @@ try {
       }
     case "freshness":
       await every(loopMinutes(), async () => {
-        for (const a of await freshnessTick(deps, process.env.HOME ?? ""))
+        for (const a of await freshnessTick(deps, process.env["HOME"] ?? ""))
           console.log(`${a.kind.toUpperCase()} ${a.lane} ${a.detail}`);
       });
       break;
@@ -502,7 +514,7 @@ try {
         const slack = new Slack(
           fetchHttp,
           realClock,
-          { token: token("DORI_SLACK_TOKEN"), cookie: process.env.DORI_SLACK_COOKIE },
+          slackAuth(token("DORI_SLACK_TOKEN")),
           undefined,
           new ThreadLedger(`${config.stateDir}/slack-threads.json`),
         );
@@ -523,9 +535,9 @@ try {
     case "presence": {
       if (key === "slack") {
         const auth = {
-          token: process.env.DORI_SLACK_TOKEN ?? die("DORI_SLACK_TOKEN is not set"),
+          token: process.env["DORI_SLACK_TOKEN"] ?? die("DORI_SLACK_TOKEN is not set"),
           cookie:
-            process.env.DORI_SLACK_COOKIE ??
+            process.env["DORI_SLACK_COOKIE"] ??
             die("DORI_SLACK_COOKIE is not set (user-token presence needs the d cookie)"),
         };
         const p = slackPresence(
@@ -540,7 +552,7 @@ try {
         console.log("PRESENCE_READY slack");
         await every(1, async () => console.log(`PRESENCE slack ${await p.hold()}`));
       } else if (key === "discord") {
-        const token = process.env.DORI_DISCORD_TOKEN ?? die("DORI_DISCORD_TOKEN is not set");
+        const token = process.env["DORI_DISCORD_TOKEN"] ?? die("DORI_DISCORD_TOKEN is not set");
         discordPresence(
           () => {
             const ws = new WebSocket("wss://gateway.discord.gg/?v=10&encoding=json");
@@ -568,7 +580,7 @@ try {
         const tg = new Telegram(
           fetchHttp,
           realClock,
-          process.env.DORI_TELEGRAM_TOKEN ?? die("DORI_TELEGRAM_TOKEN is not set"),
+          process.env["DORI_TELEGRAM_TOKEN"] ?? die("DORI_TELEGRAM_TOKEN is not set"),
         );
         const store = fileTgInboundStore(`${config.stateDir}/telegram-offset`);
         const num = (name: string): number => {
@@ -580,14 +592,18 @@ try {
         };
         const ownerId = num("DORI_TELEGRAM_OWNER_ID");
         const groupChatId =
-          process.env.DORI_TELEGRAM_GROUP_ID === undefined ? undefined : num("DORI_TELEGRAM_GROUP_ID");
-        const topicId = process.env.DORI_TELEGRAM_TOPIC_ID === undefined ? undefined : num("DORI_TELEGRAM_TOPIC_ID");
+          process.env["DORI_TELEGRAM_GROUP_ID"] === undefined ? undefined : num("DORI_TELEGRAM_GROUP_ID");
+        const topicId = process.env["DORI_TELEGRAM_TOPIC_ID"] === undefined ? undefined : num("DORI_TELEGRAM_TOPIC_ID");
         console.log(`INBOUND_READY telegram owner=${ownerId} group=${groupChatId ?? "-"} topic=${topicId ?? "-"}`);
         // Full text, JSON-escaped on one line: getUpdates cannot fetch a message twice.
         await telegramInboundLoop(
           tg,
           store,
-          { ownerId, groupChatId, topicId },
+          {
+            ownerId,
+            ...(groupChatId !== undefined ? { groupChatId } : {}),
+            ...(topicId !== undefined ? { topicId } : {}),
+          },
           minutes,
           (i) =>
             console.log(
@@ -599,13 +615,10 @@ try {
         break;
       }
       if (key !== "slack") die("inbound supports slack or telegram");
-      const auth = {
-        token: process.env.DORI_SLACK_TOKEN ?? die("DORI_SLACK_TOKEN is not set"),
-        cookie: process.env.DORI_SLACK_COOKIE,
-      };
+      const auth = slackAuth(process.env["DORI_SLACK_TOKEN"] ?? die("DORI_SLACK_TOKEN is not set"));
       const ledger = new ThreadLedger(`${config.stateDir}/slack-threads.json`);
       const slack = new Slack(fetchHttp, realClock, auth, undefined, ledger);
-      const me = String((await slack.call("auth.test", {})).user_id ?? die("auth.test returned no user_id"));
+      const me = String((await slack.call("auth.test", {}))["user_id"] ?? die("auth.test returned no user_id"));
       console.log("INBOUND_READY slack");
       await every(minutes, async () => {
         for (const i of await pollSlackInbound(slack, ledger, { selfUserId: me }))

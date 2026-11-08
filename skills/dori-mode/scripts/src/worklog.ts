@@ -43,6 +43,7 @@ const singleLine = (value: unknown, max: number): value is string =>
   typeof value === "string" &&
   value.trim().length > 0 &&
   value.length <= max &&
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: the pattern deliberately matches control characters to reject or strip them
   !/[\x00-\x1f\x7f-\x9f\u2028\u2029]/.test(value);
 const isoTime = (value: unknown): value is string =>
   typeof value === "string" && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
@@ -51,16 +52,16 @@ const parseEvent = (value: unknown): Event => {
   if (typeof value !== "object" || value === null || Array.isArray(value))
     throw new WorklogError("worklog record must be a JSON object");
   const record = value as Record<string, unknown>;
-  if (typeof record.id !== "string" || !ID.test(record.id))
+  if (typeof record["id"] !== "string" || !ID.test(record["id"]))
     throw new WorklogError('worklog field "id" must be 8 lowercase hex digits');
-  if (!isoTime(record.at)) throw new WorklogError('worklog field "at" must be an ISO time as toISOString writes it');
+  if (!isoTime(record["at"])) throw new WorklogError('worklog field "at" must be an ISO time as toISOString writes it');
   const fields: Record<string, Record<string, number>> = {
     add: { title: 200, source: 400 },
     next: { text: 1000 },
     note: { text: 1000 },
     close: { result: 1000 },
   };
-  const wanted = typeof record.op === "string" ? fields[record.op] : undefined;
+  const wanted = typeof record["op"] === "string" ? fields[record["op"]] : undefined;
   if (!wanted) throw new WorklogError('worklog field "op" must be add, next, note or close');
   const unknown = Object.keys(record).find((name) => !["op", "id", "at", ...Object.keys(wanted)].includes(name));
   if (unknown !== undefined) throw new WorklogError(`unknown worklog field "${unknown}"`);

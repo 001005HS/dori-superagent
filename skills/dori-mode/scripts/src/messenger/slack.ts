@@ -30,15 +30,19 @@ export class Slack {
       body: JSON.stringify(params),
     });
     const body = JSON.parse(res.body || "{}") as Record<string, unknown>;
-    if (res.status !== 200 || body.ok !== true)
+    if (res.status !== 200 || body["ok"] !== true)
       throw new MessengerError(
-        `slack ${method}: ${String(body.error ?? res.status)}`,
+        `slack ${method}: ${String(body["error"] ?? res.status)}`,
         res.status,
-        String(body.error ?? ""),
+        String(body["error"] ?? ""),
       );
-    if (this.ledger && method === "chat.postMessage" && typeof body.ts === "string") {
-      const channel = String(body.channel ?? params.channel);
-      await this.ledger.record(channel, typeof params.thread_ts === "string" ? params.thread_ts : body.ts, body.ts);
+    if (this.ledger && method === "chat.postMessage" && typeof body["ts"] === "string") {
+      const channel = String(body["channel"] ?? params["channel"]);
+      await this.ledger.record(
+        channel,
+        typeof params["thread_ts"] === "string" ? params["thread_ts"] : body["ts"],
+        body["ts"],
+      );
     }
     return body;
   }
@@ -49,7 +53,7 @@ export class Slack {
       text: guardText(text),
       ...(threadTs ? { thread_ts: threadTs } : {}),
     });
-    return { channel: String(r.channel), ts: String(r.ts) };
+    return { channel: String(r["channel"]), ts: String(r["ts"]) };
   }
 
   async edit(channel: string, ts: string, text: string): Promise<void> {
@@ -64,14 +68,18 @@ export class Slack {
     title?: string,
   ): Promise<string> {
     const slot = await this.call("files.getUploadURLExternal", { filename, length: bytes.byteLength });
-    const put = await withBackoff(this.http, this.clock, { method: "POST", url: String(slot.upload_url), body: bytes });
+    const put = await withBackoff(this.http, this.clock, {
+      method: "POST",
+      url: String(slot["upload_url"]),
+      body: bytes,
+    });
     if (put.status !== 200) throw new MessengerError(`slack upload: ${put.status}`, put.status);
     await this.call("files.completeUploadExternal", {
-      files: [{ id: slot.file_id, title: title ?? filename }],
+      files: [{ id: slot["file_id"], title: title ?? filename }],
       channel_id: channel,
       ...(threadTs ? { thread_ts: threadTs } : {}),
     });
-    return String(slot.file_id);
+    return String(slot["file_id"]);
   }
 
   async setPresence(presence: "auto" | "away"): Promise<void> {

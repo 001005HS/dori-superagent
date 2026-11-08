@@ -163,7 +163,7 @@ export async function backlogImport(
     );
     backlogAdd(d, id, brief, {
       title: issue.title,
-      cwd,
+      ...(cwd !== undefined ? { cwd } : {}),
       source,
       ...(p ? { priority: Number(p) } : {}),
       ...(names.includes("needs-decision")
@@ -337,7 +337,7 @@ async function audit(d: Deps, run: LoopRun): Promise<void> {
   const now = d.now();
   for (const lane of d.store.lanes()) {
     if (lane.status !== "working" && lane.status !== "waiting" && lane.status !== "ready") continue;
-    let st;
+    let st: Awaited<ReturnType<Deps["herdr"]["status"]>>;
     try {
       st = await d.herdr.status(lane.paneId);
     } catch (e) {

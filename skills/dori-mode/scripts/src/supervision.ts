@@ -8,9 +8,9 @@ import { Reports } from "./reports.ts";
 import type { Clock, Runner } from "./run.ts";
 
 export type BudgetLimits = {
-  readonly wallMinutes?: number | null;
-  readonly tokens?: number | null;
-  readonly costUsd?: number | null;
+  readonly wallMinutes?: number | null | undefined;
+  readonly tokens?: number | null | undefined;
+  readonly costUsd?: number | null | undefined;
 };
 export type Usage = { readonly tokens: number | null; readonly costUsd: number | null };
 export type UsageSnapshot = Usage & { readonly key: string; readonly at: string; readonly final?: true };
@@ -98,7 +98,7 @@ export class Supervision {
     if (this.options.usageArgv?.length) {
       const result = await this.deps.run(
         fill(this.options.usageArgv, { key: lane.key, session: lane.session ?? "", cwd: lane.cwd ?? "" }),
-        { cwd: lane.cwd, timeoutMs: 10_000 },
+        { ...(lane.cwd !== undefined ? { cwd: lane.cwd } : {}), timeoutMs: 10_000 },
       );
       if (result.code === 0) {
         try {
@@ -308,7 +308,7 @@ export class Supervision {
           at: snapshot.at,
           closeKey: `${lane.key}@${lane.openedAt}`,
         }),
-        { cwd: lane.cwd, timeoutMs: 10_000 },
+        { ...(lane.cwd !== undefined ? { cwd: lane.cwd } : {}), timeoutMs: 10_000 },
       );
       if (result.code !== 0) {
         // Kept as a plain reading, so the next close takes a new one and runs the hook again.

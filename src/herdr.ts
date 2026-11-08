@@ -44,6 +44,11 @@ export class DeliveryUncertain extends Error {
  */
 export type AgentIdentity = { readonly agent?: string; readonly pgid?: number };
 
+const identity = (agent: string | undefined, pgid: number | undefined): AgentIdentity => ({
+  ...(agent !== undefined ? { agent } : {}),
+  ...(pgid !== undefined ? { pgid } : {}),
+});
+
 /** What submitTyped did: pressed Enter, found the agent away for now (suspended), or found a different or no agent. */
 export type SubmitResult = "submitted" | "wait" | "changed";
 
@@ -232,7 +237,7 @@ export class Herdr {
         throw new DeliveryUncertain(err, false);
       }
       await Bun.sleep(PASTE_SETTLE_MS);
-      await this.pressEnter(paneId, { agent, pgid: front.pgid });
+      await this.pressEnter(paneId, identity(agent, front.pgid));
       return true;
     }
   }
@@ -251,7 +256,7 @@ export class Herdr {
     if (front.shell) return "wait";
     if (typedInto.agent !== undefined && agent !== typedInto.agent) return "changed";
     if (typedInto.pgid !== undefined && front.pgid !== typedInto.pgid) return "changed";
-    await this.pressEnter(paneId, { agent, pgid: front.pgid });
+    await this.pressEnter(paneId, identity(agent, front.pgid));
     return "submitted";
   }
 

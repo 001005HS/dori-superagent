@@ -141,14 +141,11 @@ export const parseSignal = (raw: string): Signal => {
       throw new SignalSyntaxError("command argv must be a non-empty array of non-empty strings");
     const opts = readOptions(s, end);
     onlyKeys(opts, (k) => k === "stdout", "command");
-    return {
-      kind: "command",
-      argv: value as string[],
-      stdout: regex(
-        opts.find((o) => o.key === "stdout"),
-        "stdout",
-      ),
-    };
+    const stdout = regex(
+      opts.find((o) => o.key === "stdout"),
+      "stdout",
+    );
+    return { kind: "command", argv: value as string[], ...(stdout !== undefined ? { stdout } : {}) };
   }
   if (kind === "file") {
     const pathTok =
@@ -185,15 +182,11 @@ export const parseSignal = (raw: string): Signal => {
   onlyKeys(opts, (k) => k === "status" || k === "body", "url");
   const st = opts.find((o) => o.key === "status");
   if (st && (st.op !== "=" || !Number.isInteger(st.value))) throw new SignalSyntaxError("status= takes an integer");
-  return {
-    kind: "url",
-    url: urlTok,
-    status: st ? Number(st.value) : 200,
-    body: regex(
-      opts.find((o) => o.key === "body"),
-      "body",
-    ),
-  };
+  const body = regex(
+    opts.find((o) => o.key === "body"),
+    "body",
+  );
+  return { kind: "url", url: urlTok, status: st ? Number(st.value) : 200, ...(body !== undefined ? { body } : {}) };
 };
 
 const resolvePath = (p: string, io: SignalIo): string => {

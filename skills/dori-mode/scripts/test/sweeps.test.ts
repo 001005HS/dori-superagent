@@ -234,7 +234,16 @@ test("STARTUP_NO_GOAL names the time the launch really waited, not the planned 8
   writeFileSync(brief, "# brief\n");
   world.screen = "❯ ";
   const clock = fakeClock(T0);
-  const base = depsFor(world, { ...clock, sleep: async (ms: number) => void (clock.at += ms + 5_000) }, state.dir);
+  const base = depsFor(
+    world,
+    {
+      ...clock,
+      sleep: async (ms: number) => {
+        clock.at += ms + 5_000;
+      },
+    },
+    state.dir,
+  );
   const inner = base.run;
   const deps = {
     ...base,

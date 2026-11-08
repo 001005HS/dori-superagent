@@ -11,5 +11,3 @@ export const transcribe = async (run: Runner, hook: ArgvTemplate | undefined, au
     throw new TranscriptionError(`transcription failed (exit ${r.code}): ${r.err.slice(0, 160)}`);
   return text;
 };
-
-export const asOwnerMessage = (transcript: string): string => `[voice] ${transcript}`;

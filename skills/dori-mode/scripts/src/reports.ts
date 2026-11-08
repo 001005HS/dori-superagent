@@ -52,6 +52,7 @@ export const reportState = (kind: ReportKind): ProgressState => {
 export const reportLine = (report: Report): string =>
   `[REPORT] ${report.key} | ${report.kind} | ${Bun.stripANSI(report.text)
     .replace(/\s*[\r\n]+\s*/g, " ")
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: the pattern deliberately matches control characters to reject or strip them
     .replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, "")}`;
 
 export const parseEvent = (line: string, key: string): LaneEvent => {

@@ -43,7 +43,8 @@ export const statusLookup = async (
   pane: string,
 ): Promise<{ readonly status?: string; readonly error?: string }> => {
   try {
-    return { status: await agentStatus(run, pane) };
+    const status = await agentStatus(run, pane);
+    return status !== undefined ? { status } : {};
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }

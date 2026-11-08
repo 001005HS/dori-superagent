@@ -216,7 +216,7 @@ describe("the CLI on an uncertain first delivery (#89 review)", () => {
 
 describe("control", () => {
   test("normal delivery is unchanged: delivered once through agent prompt, nothing typed, inbox empty", async () => {
-    const { w, d, lead, count } = setup();
+    const { d, lead, count } = setup();
     expect(await send(d, "lead", "hello", "cli")).toBe("DELIVERED");
     expect(lead.received).toEqual(["hello"]);
     expect(count("w1:p1", "agent", "prompt")).toBe(1);

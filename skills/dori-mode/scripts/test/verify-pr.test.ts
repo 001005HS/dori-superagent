@@ -56,8 +56,10 @@ const snapshot = (
   files: commits.flatMap((c) => c.files),
 });
 const json = (value: unknown) => ({ code: 0, out: JSON.stringify(value), err: "" });
-const recordedRunner = (p: PrSnapshot): { run: Runner; calls: { argv: readonly string[]; opts?: RunOptions }[] } => {
-  const calls: { argv: readonly string[]; opts?: RunOptions }[] = [];
+const recordedRunner = (
+  p: PrSnapshot,
+): { run: Runner; calls: { argv: readonly string[]; opts?: RunOptions | undefined }[] } => {
+  const calls: { argv: readonly string[]; opts?: RunOptions | undefined }[] = [];
   const run: Runner = async (argv, opts) => {
     calls.push({ argv, opts });
     // The endpoint is checked by the dispatch below; any other argument fails here.

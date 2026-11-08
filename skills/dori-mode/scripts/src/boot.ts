@@ -6,7 +6,7 @@ import { shellQuote } from "./launch.ts";
 import { listPanes, type Pane } from "./panes.ts";
 import type { Slack } from "./messenger/slack.ts";
 import { type Lane, statusOf } from "./registry.ts";
-import { type ProgressState, ReportError, Reports } from "./reports.ts";
+import { type ProgressState, ReportError, type Reports } from "./reports.ts";
 import { type Worklog, worklogLines } from "./worklog.ts";
 
 export type PaneState = "live" | "vanished" | "unassigned";
@@ -27,7 +27,7 @@ export type Manifest = {
   readonly path: string;
   readonly data: { readonly version: number; readonly sessionId: string; readonly monitors: readonly Monitor[] };
 };
-export type BootLane = Lane & { readonly reportState?: ProgressState };
+export type BootLane = Lane & { readonly reportState?: ProgressState | undefined };
 export type Cleanup = {
   readonly monitorId: string;
   readonly sessionId: string;
@@ -61,9 +61,14 @@ export const slackAuthCheck =
     if (!slack) return null;
     const auth = await slack.call("auth.test", {});
     // A success without both ids proves nothing about the account, as in `inbound`.
-    if (typeof auth.user_id !== "string" || !auth.user_id || typeof auth.team_id !== "string" || !auth.team_id)
+    if (
+      typeof auth["user_id"] !== "string" ||
+      !auth["user_id"] ||
+      typeof auth["team_id"] !== "string" ||
+      !auth["team_id"]
+    )
       throw new Error("auth.test returned no user_id or team_id");
-    return { userId: auth.user_id, teamId: auth.team_id };
+    return { userId: auth["user_id"], teamId: auth["team_id"] };
   };
 
 export const reconcilePanes = (
@@ -171,7 +176,7 @@ export const readMonitorManifests = (
     errors.push(sessionsDir);
   }
   for (const dir of [...dirs].sort()) {
-    let files;
+    let files: ReturnType<typeof entries>;
     try {
       files = entries(dir);
     } catch {

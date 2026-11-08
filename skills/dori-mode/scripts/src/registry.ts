@@ -19,7 +19,7 @@ export type Lane = {
   readonly key: string;
   readonly title: string;
   readonly thread: string;
-  readonly pane?: string;
+  readonly pane?: string | undefined;
   readonly tab?: string;
   readonly session?: string;
   readonly sessionVia?: string;
@@ -38,20 +38,20 @@ export type Lane = {
   readonly lastNudgeAt?: number;
   readonly lastAutoReplyAt?: number;
   /** The [REPORT] line the freshness sweep last posted, so a stale screen is never posted twice. */
-  readonly lastPostedReport?: string;
+  readonly lastPostedReport?: string | undefined;
   /** The [REPORT] line seen on the previous freshness tick (a line is posted only once it holds across two ticks). */
-  readonly lastSeenReport?: string;
+  readonly lastSeenReport?: string | undefined;
   /** The last held-back freshness outcome, so a quiet lane logs each state change once, not every tick. */
-  readonly lastFreshnessNote?: string;
+  readonly lastFreshnessNote?: string | undefined;
   /** A paused lane whose pane read working on the previous freshness tick (two in a row is reported, never a resume). */
-  readonly pausedSeenWorking?: boolean;
+  readonly pausedSeenWorking?: boolean | undefined;
   /** The status a paused lane had before it was paused; `resume` restores it. */
-  readonly pausedFrom?: LaneStatus;
-  readonly reportProtocol?: "jsonl-v1";
+  readonly pausedFrom?: LaneStatus | undefined;
+  readonly reportProtocol?: "jsonl-v1" | undefined;
   readonly budget?: BudgetLimits;
   readonly activityPaths?: readonly string[];
   /** The last supervision failure printed by `freshness`, so the same one is printed once. */
-  readonly lastSupervisionError?: string;
+  readonly lastSupervisionError?: string | undefined;
   readonly receipt?: unknown;
 };
 

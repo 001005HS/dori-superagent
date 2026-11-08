@@ -35,6 +35,7 @@ export const isLessonOutcome = (value: unknown): value is LessonOutcome =>
   value === "pending" || value === "helped" || value === "no-effect" || value === "harmful" || value === "encoded";
 
 const singleLine = (value: unknown, max: number): value is string =>
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: the pattern deliberately matches control characters to reject or strip them
   typeof value === "string" && value.trim().length > 0 && value.length <= max && !/[\x00-\x1f\x7f]/.test(value);
 
 export const REPO_LESSON_CAP = 8;
@@ -67,7 +68,7 @@ const parseLesson = (value: unknown): Lesson => {
   const unknown = Object.keys(record).find((name) => !(FIELDS as readonly string[]).includes(name));
   if (unknown !== undefined) throw new LessonError(`unknown lesson field "${unknown}"`);
   // A repo lesson has a cwd and no scope; a global lesson has scope "global" and no cwd.
-  const global = record.scope === "global";
+  const global = record["scope"] === "global";
   if (global && "cwd" in record) throw new LessonError('a global lesson has no field "cwd"');
   const absent = global ? "cwd" : "scope";
   for (const name of FIELDS) {

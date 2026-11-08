@@ -56,7 +56,7 @@ function setup() {
         HOME: home,
         DORI_SRC: src,
         SKILLS_DIR: join(home, "skills"),
-        PATH: `${bin}:${process.env.PATH}`,
+        PATH: `${bin}:${process.env["PATH"]}`,
         ...env,
       },
     });

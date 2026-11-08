@@ -73,7 +73,7 @@ export const defaultConfig = (home = homedir()): DoriConfig => ({
   },
 });
 
-export const configPath = (): string => process.env.DORI_CONFIG ?? join(homedir(), ".dori", "config.json");
+export const configPath = (): string => process.env["DORI_CONFIG"] ?? join(homedir(), ".dori", "config.json");
 
 export const expandHome = (path: string, home = homedir()): string =>
   path === "~" ? home : path.startsWith("~/") ? join(home, path.slice(2)) : path;
@@ -137,8 +137,8 @@ const checkSupervision = (value: unknown): void => {
     if (value[name] !== undefined && !isRecord(value[name]))
       throw new ConfigError(`invalid supervision ${name}: expected an object`);
   }
-  if (isRecord(value.defaults)) checkCeilingNames("defaults", value.defaults);
-  for (const [key, budget] of Object.entries(isRecord(value.lanes) ? value.lanes : {})) {
+  if (isRecord(value["defaults"])) checkCeilingNames("defaults", value["defaults"]);
+  for (const [key, budget] of Object.entries(isRecord(value["lanes"]) ? value["lanes"] : {})) {
     if (!isRecord(budget)) throw new ConfigError(`invalid supervision lanes.${key}: expected an object`);
     checkCeilingNames(`lanes.${key}`, budget);
   }
@@ -148,7 +148,7 @@ const checkSupervision = (value: unknown): void => {
       throw new ConfigError(`invalid supervision ${name}: expected an array of strings`);
     }
   }
-  if (value.gitActivity !== undefined && typeof value.gitActivity !== "boolean")
+  if (value["gitActivity"] !== undefined && typeof value["gitActivity"] !== "boolean")
     throw new ConfigError("invalid supervision gitActivity: expected true or false");
 };
 
@@ -187,10 +187,10 @@ export const loadConfig = async (path = configPath(), home = homedir()): Promise
   }
   return {
     ...merged,
-    stateDir: expandHome(process.env.DORI_STATE_DIR ?? merged.stateDir, home),
+    stateDir: expandHome(process.env["DORI_STATE_DIR"] ?? merged.stateDir, home),
     defaultCwd: expandHome(merged.defaultCwd, home),
     sessionsDir: expandHome(merged.sessionsDir, home),
-    leadPane: process.env.DORI_LEAD_PANE ?? merged.leadPane,
+    leadPane: process.env["DORI_LEAD_PANE"] ?? merged.leadPane,
   };
 };
 

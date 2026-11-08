@@ -153,7 +153,16 @@ export const checkPr = (snapshot: PrSnapshot, options: VerifyPrOptions = {}): Ve
   const loopCommand = asyncUiTests.length
     ? `i=0; while [ "$i" -lt ${loopCount} ]; do bun --no-env-file test ${asyncUiTests.map((f) => quote(`./${f}`)).join(" ")} || exit $?; i=$((i + 1)); done`
     : undefined;
-  return { ok: !errors.length, repo, number, head: snapshot.head, errors, warnings, asyncUiTests, loopCommand };
+  return {
+    ok: !errors.length,
+    repo,
+    number,
+    head: snapshot.head,
+    errors,
+    warnings,
+    asyncUiTests,
+    ...(loopCommand !== undefined ? { loopCommand } : {}),
+  };
 };
 
 export const verifyPr = async (
@@ -165,7 +174,10 @@ export const verifyPr = async (
   const errors = optionErrors(repo, number, options);
   if (errors.length) return failed(repo, number, errors);
   const api = async (endpoint: string): Promise<unknown> => {
-    const r = await run(["gh", "api", "--method", "GET", endpoint], { cwd: options.cwd, timeoutMs: 120_000 });
+    const r = await run(["gh", "api", "--method", "GET", endpoint], {
+      ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
+      timeoutMs: 120_000,
+    });
     if (r.code !== 0) throw new Error(`gh api ${endpoint}: exit ${r.code}: ${(r.err || r.out).trim()}`);
     try {
       return JSON.parse(r.out);

@@ -181,9 +181,11 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
       return 0;
     }
     case "start": {
+      const cwd = one(a, "cwd");
+      const workspace = one(a, "workspace");
       const lane = await startLane(d, need(x, "lane key"), need(one(a, "brief"), "--brief"), {
-        cwd: one(a, "cwd"),
-        workspace: one(a, "workspace"),
+        ...(cwd !== undefined ? { cwd } : {}),
+        ...(workspace !== undefined ? { workspace } : {}),
       });
       console.log(`STARTED ${lane.key} pane=${lane.paneId} brief=${lane.brief}`);
       return 0;
@@ -247,14 +249,14 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
       // Bun.sleep(NaN) and any Bun.sleep under 1 ms return at once, so a bad value would run duty passes back to back.
       if (!(Number.isFinite(interval) && interval >= 1))
         throw new Refusal("--interval must be a number of seconds, 0.001 or more");
-      do {
+      for (;;) {
         for (const e of await dutyTick(d))
           console.log(
             `DUTY ${[e.lane ?? e.pane, e.action].filter(Boolean).join(" ")}${e.detail ? `: ${e.detail}` : ""}`,
           );
         if (one(a, "once")) break;
         await Bun.sleep(interval);
-      } while (true);
+      }
       return 0;
     }
     case "loop": {
@@ -302,7 +304,7 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
           "--interval and --max-load must be finite positive numbers; --max-lanes and --max-starts whole numbers >= 0",
         );
       }
-      do {
+      for (;;) {
         try {
           const run = await loopTick(d, opts);
           console.log(
@@ -317,17 +319,20 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
         if (one(a, "once")) break;
         opts.force = false;
         await Bun.sleep(msUntilNext(d, interval));
-      } while (true);
+      }
       return 0;
     }
     case "backlog": {
       if (x === "add") {
         const id = need(a.pos[2], "item id");
         const p = one(a, "priority");
+        const title = one(a, "title");
+        const cwd = one(a, "cwd");
+        const decision = one(a, "decision");
         const item = backlogAdd(d, id, need(one(a, "brief"), "--brief"), {
-          title: one(a, "title"),
-          cwd: one(a, "cwd"),
-          decision: one(a, "decision"),
+          ...(title !== undefined ? { title } : {}),
+          ...(cwd !== undefined ? { cwd } : {}),
+          ...(decision !== undefined ? { decision } : {}),
           ...(p !== undefined ? { priority: Number(p) } : {}),
         });
         console.log(`ADDED ${item.id} p${item.priority}${item.decision ? " (needs decision)" : ""}`);

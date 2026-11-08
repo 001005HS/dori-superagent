@@ -156,7 +156,7 @@ export class Telemetry implements Usage {
         return;
       }
       const { since: _since, ...totals } = acc;
-      state.duty = undefined;
+      delete state.duty;
       this.save(state);
       await this.emit(state, [{ name: "dori.duty_summary", ...totals }]);
     });
@@ -175,7 +175,7 @@ export class Telemetry implements Usage {
       "x-omo-ingest-key": key,
     });
     if (res.status === 401 && state.key !== undefined) {
-      state.key = undefined;
+      delete state.key;
       this.save(state);
       return false;
     }
@@ -218,8 +218,6 @@ export function rejectedRecords(text: string): number {
     return 0;
   }
 }
-
-export const noUsage: Usage = { touch: () => {}, record: () => {}, duty: () => {}, flush: async () => {} };
 
 const osVersion = () => {
   const v = release().match(/^\d{1,6}(?:\.\d{1,6}){1,3}/)?.[0];
