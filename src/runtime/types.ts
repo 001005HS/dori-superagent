@@ -94,13 +94,24 @@ export const parseRef: (text: string) => SessionRef | undefined = (text) => {
   return BARE_HERDR.test(text) ? { runtime: "herdr", id: text } : undefined;
 };
 export const formatRef: (ref: SessionRef) => string = (ref) => `${ref.runtime}:${ref.id}`;
-/** create + start in one call (the root harness path). */
+/**
+ * create + start in one call (the root harness path). A start that fails closes the session create just made (scope
+ * "session"), so no idle shell is left behind, and rethrows the start error; a close that fails too is one stderr line.
+ */
 export const openSession: (rt: SessionRuntime, spec: CreateSpec, command: string) => Promise<SessionRef> = async (
   rt,
   spec,
   command,
 ) => {
   const ref = await rt.create(spec);
-  await rt.start(ref, command);
+  try {
+    await rt.start(ref, command);
+  } catch (e) {
+    await rt.close(ref, "session").catch((closeError: unknown) => {
+      const why = closeError instanceof Error ? closeError.message : String(closeError);
+      process.stderr.write(`dori: could not close ${formatRef(ref)} after its start failed (${why})\n`);
+    });
+    throw e;
+  }
   return ref;
 };
