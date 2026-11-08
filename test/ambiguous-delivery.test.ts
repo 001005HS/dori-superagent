@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { main } from "../src/cli.ts";
-import { dutyTick, send } from "../src/harness.ts";
+import { dutyTick } from "../src/duty.ts";
+import { send } from "../src/harness.ts";
 import { World } from "./fake.ts";
 
 // #89: a delivery that failed after the text may already have reached the pane is never re-sent blindly.

@@ -1,39 +1,14 @@
 #!/usr/bin/env bun
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import {
-  defaultDeps,
-  done,
-  dutyTick,
-  inboxList,
-  mergeGate,
-  ready,
-  Refusal,
-  releaseHeld,
-  report,
-  review,
-  send,
-  sendToShell,
-  startLane,
-  ROLES,
-  type Deps,
-  type SendResult,
-} from "./harness.ts";
-import { shq } from "./herdr.ts";
-import {
-  backlogAdd,
-  backlogDecide,
-  backlogDrop,
-  backlogImport,
-  loopTick,
-  msUntilNext,
-  summary,
-  HOUR,
-  IMPORT_LIMIT,
-} from "./loop.ts";
-import type { Role } from "./store.ts";
+import { resolve } from "node:path";
+import { runBacklog, runDuty, runLoop } from "./cli-loops.ts";
+import { status, up } from "./cli-up.ts";
+import { done, ready, report, startLane } from "./lanes.ts";
+import { mergeGate, review } from "./gate.ts";
+import { defaultDeps, Refusal, send, ROLES, type Deps, type SendResult } from "./harness.ts";
+import { inboxList, releaseHeld, sendToShell } from "./inbox.ts";
+import type { Role } from "./store-types.ts";
 
-const USAGE = `dori - a proactive multi-session harness on herdr + omo
+export const USAGE = `dori - a proactive multi-session harness on herdr + omo
 
   dori up [--cwd DIR]                         open lead, duty, duty loop and hourly loop panes
   dori role <lead|duty> [PANE]                register a pane as lead or duty (default: this pane)
@@ -80,7 +55,7 @@ const COMMANDS = new Set([
   "backlog",
 ]);
 
-type Args = { pos: string[]; flags: Map<string, string[]> };
+export type Args = { pos: string[]; flags: Map<string, string[]> };
 
 // Flags that never take a value. Every other flag takes the next argument verbatim, even one starting with "--", so a
 // relayed value such as `--from "$SENDER"` or `--text "$MSG"` can never turn into a flag like --to-shell (#66).
@@ -103,13 +78,13 @@ function parse(argv: readonly string[]): Args {
   return { pos, flags };
 }
 
-const one = (a: Args, f: string): string | undefined => a.flags.get(f)?.at(-1);
-const need = (v: string | undefined, what: string): string => {
+export const one = (a: Args, f: string): string | undefined => a.flags.get(f)?.at(-1);
+export const need = (v: string | undefined, what: string): string => {
   if (!v) throw new Refusal(`missing ${what}\n\n${USAGE}`);
   return v;
 };
 
-async function textOf(a: Args): Promise<string> {
+export async function textOf(a: Args): Promise<string> {
   const t = one(a, "text");
   if (t !== undefined) return t;
   if (process.stdin.isTTY) throw new Refusal("give --text or pipe the message on stdin");
@@ -124,44 +99,6 @@ function deliveryOutcome(result: SendResult | undefined, target: string): number
   }
   if (result === "QUEUED") console.log(`QUEUED ${target}`);
   return 0;
-}
-
-function renderPrompt(d: Deps, name: string): string {
-  const dir = join(d.store.root, "prompts");
-  mkdirSync(dir, { recursive: true });
-  const src = readFileSync(join(import.meta.dir, "..", "prompts", name), "utf8").replaceAll("{{dori}}", d.doriCmd);
-  const out = join(dir, name);
-  writeFileSync(out, src);
-  return out;
-}
-
-async function up(d: Deps, cwd: string): Promise<void> {
-  const env = { DORI_HOME: d.store.root };
-  const lead = await d.herdr.createWorkspace("dori", cwd);
-  await d.herdr.run(lead.paneId, `${d.agentCmd} --append-system-prompt ${shq(renderPrompt(d, "lead.md"))}`);
-  d.store.setRole("lead", lead.paneId);
-  const duty = await d.herdr.createTab("duty", cwd, lead.workspaceId, env);
-  await d.herdr.run(duty.paneId, `${d.agentCmd} --append-system-prompt ${shq(renderPrompt(d, "duty.md"))}`);
-  d.store.setRole("duty", duty.paneId);
-  const loop = await d.herdr.split(duty.paneId, cwd, env);
-  await d.herdr.run(loop.paneId, `${d.doriCmd} duty --interval 60`);
-  const hourly = await d.herdr.split(loop.paneId, cwd, { ...env, HERDR_WORKSPACE_ID: lead.workspaceId });
-  await d.herdr.run(hourly.paneId, `${d.doriCmd} loop`);
-  console.log(
-    `UP lead=${lead.paneId} duty=${duty.paneId} loop=${loop.paneId} hourly=${hourly.paneId} home=${d.store.root}`,
-  );
-}
-
-function status(d: Deps): void {
-  const roles = d.store.roles();
-  console.log(`lead=${roles.lead ?? "-"} duty=${roles.duty ?? "-"} home=${d.store.root}`);
-  for (const l of d.store.lanes()) {
-    const last = l.log.at(-1);
-    const age = Math.round((d.now() - l.lastActivityAt) / 60_000);
-    console.log(
-      `${l.key.padEnd(24)} ${l.status.padEnd(8)} ${l.paneId.padEnd(8)} active ${age}m ago  ${last ? `${last.kind}: ${last.text.slice(0, 60)}` : ""}`,
-    );
-  }
 }
 
 export async function main(argv: readonly string[], d: Deps = defaultDeps()): Promise<number> {
@@ -228,145 +165,12 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
       }
       throw new Refusal(`unknown inbox command ${x}\n\n${USAGE}`);
     }
-    case "duty": {
-      if (x === "stop") {
-        d.store.setStop(d.now(), one(a, "text") ?? "stopped by hand", "duty");
-        console.log("DUTY STOPPED");
-        return 0;
-      }
-      if (x === "resume") {
-        d.store.clearStop("duty");
-        console.log("DUTY RESUMED");
-        return 0;
-      }
-      if (x === "status") {
-        const stop = d.store.stop("duty");
-        console.log(stop ? `stopped: ${stop.reason}` : "running (no stop file)");
-        return 0;
-      }
-      if (x !== undefined) throw new Refusal(`unknown duty command ${x}\n\n${USAGE}`);
-      const interval = Number(one(a, "interval") ?? "60") * 1000;
-      // Bun.sleep(NaN) and any Bun.sleep under 1 ms return at once, so a bad value would run duty passes back to back.
-      if (!(Number.isFinite(interval) && interval >= 1))
-        throw new Refusal("--interval must be a number of seconds, 0.001 or more");
-      for (;;) {
-        for (const e of await dutyTick(d))
-          console.log(
-            `DUTY ${[e.lane ?? e.pane, e.action].filter(Boolean).join(" ")}${e.detail ? `: ${e.detail}` : ""}`,
-          );
-        if (one(a, "once")) break;
-        await Bun.sleep(interval);
-      }
-      return 0;
-    }
-    case "loop": {
-      if (x === "stop") {
-        d.store.setStop(d.now(), one(a, "text") ?? "stopped by hand");
-        console.log("LOOP STOPPED");
-        return 0;
-      }
-      if (x === "resume") {
-        d.store.clearStop();
-        console.log("LOOP RESUMED");
-        return 0;
-      }
-      if (x === "status") {
-        const stop = d.store.stop();
-        const last = d.store.lastRun();
-        const age = last ? Math.round((d.now() - last.at) / 60_000) : undefined;
-        console.log(
-          stop
-            ? `stopped: ${stop.reason}`
-            : `armed (no stop file; ${age === undefined ? "no run recorded yet" : `last run ${age}m ago`})`,
-        );
-        console.log(last ? summary(last) : "no run yet");
-        return 0;
-      }
-      if (x !== undefined) throw new Refusal(`unknown loop command ${x}\n\n${USAGE}`);
-      const interval = Number(one(a, "interval") ?? String(HOUR / 1000)) * 1000;
-      const opts = {
-        interval,
-        maxLanes: Number(one(a, "max-lanes") ?? process.env["DORI_MAX_LANES"] ?? "3"),
-        maxStarts: Number(one(a, "max-starts") ?? process.env["DORI_MAX_STARTS"] ?? "2"),
-        force: one(a, "force") === "true",
-        ...((one(a, "max-load") ?? process.env["DORI_MAX_LOAD"])
-          ? { maxLoad: Number(one(a, "max-load") ?? process.env["DORI_MAX_LOAD"]) }
-          : {}),
-      };
-      const count = (n: number): boolean => Number.isInteger(n) && n >= 0;
-      if (
-        !(Number.isFinite(interval) && interval > 0) ||
-        !count(opts.maxLanes) ||
-        !count(opts.maxStarts) ||
-        !(opts.maxLoad === undefined || (Number.isFinite(opts.maxLoad) && opts.maxLoad > 0))
-      ) {
-        throw new Refusal(
-          "--interval and --max-load must be finite positive numbers; --max-lanes and --max-starts whole numbers >= 0",
-        );
-      }
-      for (;;) {
-        try {
-          const run = await loopTick(d, opts);
-          console.log(
-            run.skipped
-              ? `LOOP skipped: ${run.skipped}`
-              : `LOOP started=${run.started.length} findings=${run.findings.length} asked=${run.asked.length}`,
-          );
-        } catch (e) {
-          console.error(`LOOP ERROR ${e instanceof Error ? e.message : String(e)}`);
-          if (one(a, "once")) return 1;
-        }
-        if (one(a, "once")) break;
-        opts.force = false;
-        await Bun.sleep(msUntilNext(d, interval));
-      }
-      return 0;
-    }
-    case "backlog": {
-      if (x === "add") {
-        const id = need(a.pos[2], "item id");
-        const p = one(a, "priority");
-        const title = one(a, "title");
-        const cwd = one(a, "cwd");
-        const decision = one(a, "decision");
-        const item = backlogAdd(d, id, need(one(a, "brief"), "--brief"), {
-          ...(title !== undefined ? { title } : {}),
-          ...(cwd !== undefined ? { cwd } : {}),
-          ...(decision !== undefined ? { decision } : {}),
-          ...(p !== undefined ? { priority: Number(p) } : {}),
-        });
-        console.log(`ADDED ${item.id} p${item.priority}${item.decision ? " (needs decision)" : ""}`);
-      } else if (x === "list" || x === undefined) {
-        for (const i of d.store.items()) {
-          console.log(
-            `${i.id.padEnd(24)} ${i.status.padEnd(8)} p${i.priority}  ${i.decision ? `DECIDE: ${i.decision}` : i.title}`,
-          );
-        }
-      } else if (x === "decide") {
-        const id = need(a.pos[2], "item id");
-        backlogDecide(d, id, await textOf(a));
-        console.log(`DECIDED ${id}`);
-      } else if (x === "drop") {
-        const id = need(a.pos[2], "item id");
-        backlogDrop(d, id, one(a, "text"));
-        console.log(`DROPPED ${id}`);
-      } else if (x === "import") {
-        const { added, capped } = await backlogImport(
-          d,
-          need(a.pos[2], "owner/repo"),
-          one(a, "label") ?? "dori",
-          one(a, "cwd"),
-        );
-        console.log(`IMPORTED ${added.length}${added.length ? `: ${added.join(", ")}` : ""}`);
-        if (capped)
-          console.error(
-            `WARNING: gh returned ${IMPORT_LIMIT} issues, the import limit; some labelled issues may be missing`,
-          );
-      } else {
-        throw new Refusal(`unknown backlog command ${x}\n\n${USAGE}`);
-      }
-      return 0;
-    }
+    case "duty":
+      return runDuty(d, a, x);
+    case "loop":
+      return runLoop(d, a, x);
+    case "backlog":
+      return runBacklog(d, a, x);
     case "review": {
       const r = await review(d, need(x, "PR"), one(a, "model"));
       console.log(`REVIEW ${x} head=${r.sha} verdict=${r.verdict}`);
