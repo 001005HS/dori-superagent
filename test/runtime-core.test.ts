@@ -189,6 +189,24 @@ describe("openSession", () => {
     expect(calls).toEqual(["create lane-a tab", "start hc:t9 omo"]);
   });
 
+  test("a failed start closes the session it just created (scope session) and rethrows the start error", async () => {
+    const calls: string[] = [];
+    const rt = {
+      create: async () => ({ runtime: "hc", id: "t4" }) as SessionRef,
+      start: async () => {
+        calls.push("start");
+        throw new Error("send refused");
+      },
+      close: async (r: SessionRef, scope?: string) => {
+        calls.push(`close ${formatRef(r)} ${scope}`);
+      },
+    } as unknown as SessionRuntime;
+    await expect(
+      openSession(rt, { name: "x", cwd: "/", env: {}, role: "lane", container: "tab" }, "omo"),
+    ).rejects.toThrow("send refused");
+    expect(calls).toEqual(["start", "close hc:t4 session"]);
+  });
+
   test("a failed create starts nothing", async () => {
     let started = false;
     const rt = {
