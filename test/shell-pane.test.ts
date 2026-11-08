@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { main } from "../src/cli.ts";
-import { dutyTick, report, send, startLane } from "../src/harness.ts";
+import { dutyTick } from "../src/duty.ts";
+import { send } from "../src/harness.ts";
+import { report, startLane } from "../src/lanes.ts";
 import { World } from "./fake.ts";
 
 // #66: a pane whose agent is not running is a bare shell; text typed there runs as a command.
