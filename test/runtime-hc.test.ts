@@ -116,6 +116,12 @@ describe("slugName", () => {
     ["a.b_c-d", "a.b_c-d"],
     ["x".repeat(40), "x".repeat(32)],
     ["", undefined],
+    ["ünicode", "nicode"],
+    ["-_.lead", "lead"],
+    ["t7", undefined],
+    ["T12", undefined],
+    ["t7x", "t7x"],
+    ["---", undefined],
   ] as const)("%p -> %p", (name, want) => {
     expect(slugName(name)).toBe(want);
   });

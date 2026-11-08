@@ -41,6 +41,9 @@ export async function deliver(
   if (before.status === "gone" || before.shellInFront) return { kind: "no-agent" };
   if (!force && (before.status === "blocked" || before.status === "error"))
     return { kind: "not-ready", status: before.status };
+  // A terminal that has never reported (status null, no shell in front: an editor, a program without OSC 7501) gets
+  // nothing typed into it whatever `when` says: its state is unknown, so the message stays queued.
+  if (before.status === "unknown") return { kind: "not-ready", status: "unknown" };
   // `done` is the program's own "turn finished, waiting": typing is what it waits for, and `--if` takes only idle|working.
   const gate = when === "any" || (when === "idle" && before.status === "done") ? [] : ["--if", when];
   const argv = ["send", id, ...gate, ...(force ? ["--force"] : []), "--", text];

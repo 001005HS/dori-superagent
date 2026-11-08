@@ -45,7 +45,7 @@ export type CreateSpec = {
   readonly near?: SessionRef;
 };
 export type DeliverWhen = "idle" | "working" | "any";
-/** `when`: the status the text may be typed under (hc: --if idle / --if working / none). `force`: type into a blocked agent (hc --force; herdr: no-op). */
+/** `when`: the status the text may be typed under (hc: --if idle / --if working / none for "any"; "any" still never types into an `unknown` or `shell` session). `force`: type into a blocked agent (hc --force; herdr: no-op). */
 export type DeliverOptions = { readonly when?: DeliverWhen; readonly force?: boolean };
 export type DeliverOutcome =
   | { readonly kind: "delivered"; readonly turn?: number; readonly started?: boolean }

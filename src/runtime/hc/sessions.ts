@@ -8,13 +8,19 @@ const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
 export const RM_RETRIES = 5;
 export const RM_RETRY_MS = 200;
 
-/** hc's name rule: 1-32 of a-z 0-9 - _ . (lowercased, anything else becomes `-`); undefined when nothing is left. */
+/**
+ * hc's name rule (0.1.17): 1-32 of a-z 0-9 - _ . starting with a letter or digit, and never id-shaped (`t7`,
+ * `machine/t7`), because a name is resolved before an id. Lowercased, other characters become `-`, leading separators
+ * are dropped; undefined when nothing usable is left (the terminal then has no name, only its labels).
+ */
 export function slugName(name: string): string | undefined {
   const slug = name
     .toLowerCase()
     .replace(/[^a-z0-9._-]/g, "-")
+    .replace(/^[._-]+/, "")
     .slice(0, NAME_MAX);
-  return slug === "" ? undefined : slug;
+  if (slug === "" || /^t[0-9]+$/.test(slug)) return undefined;
+  return slug;
 }
 
 const rows = (result: Record<string, unknown>): Record<string, unknown>[] =>

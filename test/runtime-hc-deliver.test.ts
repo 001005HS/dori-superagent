@@ -45,19 +45,21 @@ describe("deliver", () => {
     expect(fake.calls.some((c) => c[0] === "send")).toBe(false);
   });
 
-  test.each([
-    ["working", terminal({ status: { state: "working" } }), "working"],
-    [
-      "unreported program",
-      terminal({ status: null, reported: false, foreground: { name: "node", argv: ["node"], pid: 1 } }),
-      "unknown",
-    ],
-  ] as const)(
-    "%s under the default when=idle: hc refuses the compare-and-send, nothing typed",
-    async (_, term, status) => {
-      const { fake, rt } = rig({ t1: term });
-      expect(await rt.deliver(T1, "x")).toEqual({ kind: "not-ready", status });
-      expect(fake.calls.filter((c) => c[0] === "send")).toEqual([["send", "t1", "--if", "idle", "--", "x"]]);
+  test("working under the default when=idle: hc refuses the compare-and-send, nothing typed", async () => {
+    const { fake, rt } = rig({ t1: terminal({ status: { state: "working" } }) });
+    expect(await rt.deliver(T1, "x")).toEqual({ kind: "not-ready", status: "working" });
+    expect(fake.calls.filter((c) => c[0] === "send")).toEqual([["send", "t1", "--if", "idle", "--", "x"]]);
+    expect(fake.sent).toEqual([]);
+  });
+
+  test.each(["idle", "any"] as const)(
+    "an unreported program (status null, no shell in front) under when=%s: held as unknown, no send at all",
+    async (when) => {
+      const { fake, rt } = rig({
+        t1: terminal({ status: null, reported: false, foreground: { name: "node", argv: ["node"], pid: 1 } }),
+      });
+      expect(await rt.deliver(T1, "x", { when })).toEqual({ kind: "not-ready", status: "unknown" });
+      expect(fake.calls.some((c) => c[0] === "send")).toBe(false);
       expect(fake.sent).toEqual([]);
     },
   );
