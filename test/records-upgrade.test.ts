@@ -62,7 +62,7 @@ describe("records written before runtimes existed (IS-3)", () => {
     expect(d.store.lane("old-lane")).toEqual(first.lane!);
   });
 
-  test("dori status shows the old lane as herdr:w1:p3 in a runtime column", async () => {
+  test("dori status shows the old lane as w1:p3 beside a herdr runtime column, the way it prints roles", async () => {
     const { d } = oldHome();
     const { out } = await captureIo(async () => {
       status(d);
@@ -71,6 +71,6 @@ describe("records written before runtimes existed (IS-3)", () => {
     const lines = out.split("\n");
     expect(lines[0]).toBe("RUNTIME herdr (from config)");
     expect(lines[1]).toStartWith("lead=w1:p1 duty=w1:p2 ");
-    expect(lines.find((l) => l.startsWith("old-lane"))).toMatch(/^old-lane\s+working\s+herdr\s+herdr:w1:p3\s/);
+    expect(lines.find((l) => l.startsWith("old-lane"))).toMatch(/^old-lane\s+working\s+herdr\s+w1:p3\s/);
   });
 });
