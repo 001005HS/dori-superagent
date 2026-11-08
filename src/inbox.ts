@@ -3,6 +3,7 @@ import { failureDetail } from "./duty.ts";
 import { Refusal, resolveTarget, send, tellLead, type Deps, type SendResult } from "./harness.ts";
 import { refText } from "./refs.ts";
 import type { AgentStatus, SessionRef } from "./runtime/types.ts";
+import { migrating } from "./store-journal.ts";
 import type { DeliveryAttempt, QueuedMessage } from "./store-types.ts";
 
 // A session with no running agent (`shell`) is never ready: text typed into a bare shell runs as a command (#66).
@@ -32,6 +33,7 @@ export async function sendToShell(d: Deps, target: string, text: string, from: s
  */
 export async function flushInbox(d: Deps, from: SessionRef): Promise<"delivered" | "queued" | "no-agent" | "held"> {
   const ref = d.store.forwardOf(from) ?? from;
+  if (migrating(d.store.root, from) || migrating(d.store.root, ref)) return "queued";
   if (d.store.queued(ref).length === 0 && !d.store.forwardPending(ref)) return "delivered";
   const release = d.store.lockInbox(ref, d.now());
   if (!release) return "queued";
