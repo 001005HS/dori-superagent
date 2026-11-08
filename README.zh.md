@@ -15,7 +15,7 @@ Dori 住在你的 Slack、Discord 或 Telegram 里。你在一个 thread 里告�
 
 这个仓库 `dori-superagent` 就是 Dori，采用 Sustainable Use License。Dori mode（`skills/dori-mode`）是你对话的那个 bot：它由一个给你的 coding agent 用的 skill 和一个 `dori` CLI 组成，CLI 负责开启、跟踪和关闭干活的会话，也负责和 Slack、Discord、Telegram 通信。
 
-harness（`src/`）是他背后的机房：一个 lead 会话，一个 duty loop，一个 hourly loop，宿主机能承载多少 lane 就开多少 lane，再加一个 merge gate。全部大约 3,500 行 TypeScript，跑在 [Bun](https://bun.sh) 上，没有运行时依赖。它运行在 [herdr](https://github.com/herdrdev/herdr) 和 [omo](https://github.com/code-yeongyu/oh-my-openagent) 之上。herdr 是会话所在的终端运行时，omo 是 coding agent，在 GitHub 上有 70.8k 星。
+harness（`src/`）是他背后的机房：一个 lead 会话，一个 duty loop，一个 hourly loop，宿主机能承载多少 lane 就开多少 lane，再加一个 merge gate。全部大约 4,000 行 TypeScript，跑在 [Bun](https://bun.sh) 上，没有运行时依赖。它运行在 [herdr](https://github.com/herdrdev/herdr) 和 [omo](https://github.com/code-yeongyu/oh-my-openagent) 之上。herdr 是会话所在的终端运行时，omo 是 coding agent，在 GitHub 上有 70.8k 星。
 
 ## 你能得到什么
 
@@ -245,6 +245,7 @@ harness 环境变量：
 | `DORI_HOME` | `~/.dori` | 状态目录 |
 | `DORI_AGENT_CMD` | `omo` | 每个 pane 运行的 agent |
 | `DORI_HERDR_SESSION` | | 一个命名的 herdr 会话 |
+| `DORI_RUNTIME` | PATH 上存在的那一个，`herdr` 或 `hc` | 新会话在哪个运行时上打开，`herdr` 或 `hc`；`$DORI_HOME/config.json` 里的 `runtime` 键作用相同；两个都在或都不在 PATH 上且没有设置时，`dori` 拒绝猜测 |
 | `DORI_CMD` | `src/cli.ts` 的完整路径 | 告诉 agent 如何调用 dori |
 | `DORI_PROMPTS_DIR` | 仓库的 `prompts/` | 你自己的提示词文件 |
 | `DORI_MAX_LANES`, `DORI_MAX_STARTS`, `DORI_MAX_LOAD` | 3、2、核心数 | hourly loop 的预算 |
@@ -275,7 +276,7 @@ dori 以和 omo 相同的方式发送匿名使用计数：以 OTLP/HTTP JSON 日
 ## 测试与开发
 
 ```sh
-bun test ./test/                                  # the harness: 275 tests across 24 files, no model calls
+bun test ./test/                                  # the harness: 344 tests across 34 files, no model calls
 cd skills/dori-mode/scripts && bun install && bun test   # Dori mode: 308 tests across 23 files
 bun run ci                                        # biome, tsc, knip, the 250-line check, both suites
 ```

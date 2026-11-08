@@ -15,7 +15,7 @@ Dori vive nel tuo Slack, Discord o Telegram. Gli dici cosa fare in un thread, lu
 
 Questo repository, `dori-superagent`, è Dori con la Sustainable Use License. Dori mode (`skills/dori-mode`) è il bot con cui parli: una skill per il tuo coding agent più una CLI `dori` che apre, segue e chiude le sessioni che fanno il lavoro, e parla con Slack, Discord e Telegram.
 
-L'harness (`src/`) è la sala macchine dietro di lui: una sessione lead, un duty loop, un hourly loop, tante lane quante l'host ne regge e un merge gate, in circa 3.500 righe di TypeScript su [Bun](https://bun.sh) senza dipendenze a runtime. Gira su [herdr](https://github.com/herdrdev/herdr), il runtime da terminale in cui vivono le sessioni, e su [omo](https://github.com/code-yeongyu/oh-my-openagent), il coding agent, che ha 70.8k stelle su GitHub.
+L'harness (`src/`) è la sala macchine dietro di lui: una sessione lead, un duty loop, un hourly loop, tante lane quante l'host ne regge e un merge gate, in circa 4.000 righe di TypeScript su [Bun](https://bun.sh) senza dipendenze a runtime. Gira su [herdr](https://github.com/herdrdev/herdr), il runtime da terminale in cui vivono le sessioni, e su [omo](https://github.com/code-yeongyu/oh-my-openagent), il coding agent, che ha 70.8k stelle su GitHub.
 
 ## Cosa ottieni
 
@@ -245,6 +245,7 @@ Ambiente dell'harness:
 | `DORI_HOME` | `~/.dori` | directory di stato |
 | `DORI_AGENT_CMD` | `omo` | l'agente che gira in ogni pane |
 | `DORI_HERDR_SESSION` | | una sessione herdr con nome |
+| `DORI_RUNTIME` | quello tra `herdr` e `hc` presente nel PATH | su quale runtime si aprono le nuove sessioni, `herdr` o `hc`; la chiave `runtime` in `$DORI_HOME/config.json` fa lo stesso, e con entrambi o nessuno dei due binari nel PATH e niente impostato, `dori` si rifiuta di indovinare |
 | `DORI_CMD` | percorso completo di `src/cli.ts` | come viene detto agli agenti di chiamare dori |
 | `DORI_PROMPTS_DIR` | i `prompts/` del repository | i tuoi file di prompt |
 | `DORI_MAX_LANES`, `DORI_MAX_STARTS`, `DORI_MAX_LOAD` | 3, 2, numero di core | budget dell'hourly loop |
@@ -275,7 +276,7 @@ Ogni record riporta anche nome e versione del servizio, l'hash di installazione,
 ## Test e sviluppo
 
 ```sh
-bun test ./test/                                  # the harness: 275 tests across 24 files, no model calls
+bun test ./test/                                  # the harness: 344 tests across 34 files, no model calls
 cd skills/dori-mode/scripts && bun install && bun test   # Dori mode: 308 tests across 23 files
 bun run ci                                        # biome, tsc, knip, the 250-line check, both suites
 ```

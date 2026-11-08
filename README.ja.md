@@ -15,7 +15,7 @@ DoriはSlack、Discord、Telegramに住んでいます。スレッドでやっ�
 
 このリポジトリ `dori-superagent` は、Sustainable Use Licenseで公開しているDoriです。Dori mode（`skills/dori-mode`）は、あなたが話しかけるボットです。コーディングエージェント用のスキルと `dori` CLIで構成されていて、CLIは作業するセッションを開き、追跡し、閉じます。Slack、Discord、Telegramとのやり取りもこのCLIが担います。
 
-ハーネス（`src/`）はDoriの裏側にある機械室です。リードセッション（lead）がひとつ、当番ループ（duty loop）、毎時ループ（hourly loop）、ホストが支えられる数だけのレーン（lane）、そしてマージゲートで構成されます。[Bun](https://bun.sh) 上のTypeScript約3,500行で、ランタイム依存はありません。セッションが動くターミナルランタイムの [herdr](https://github.com/herdrdev/herdr) と、GitHubで70.8kスターを持つコーディングエージェントの [omo](https://github.com/code-yeongyu/oh-my-openagent) の上で動きます。
+ハーネス（`src/`）はDoriの裏側にある機械室です。リードセッション（lead）がひとつ、当番ループ（duty loop）、毎時ループ（hourly loop）、ホストが支えられる数だけのレーン（lane）、そしてマージゲートで構成されます。[Bun](https://bun.sh) 上のTypeScript約4,000行で、ランタイム依存はありません。セッションが動くターミナルランタイムの [herdr](https://github.com/herdrdev/herdr) と、GitHubで70.8kスターを持つコーディングエージェントの [omo](https://github.com/code-yeongyu/oh-my-openagent) の上で動きます。
 
 ## できること
 
@@ -245,6 +245,7 @@ omo自体もこの方法で作られています。2026-07-13から2026-11-08の
 | `DORI_HOME` | `~/.dori` | 状態ディレクトリ |
 | `DORI_AGENT_CMD` | `omo` | 各ペインで動かすエージェント |
 | `DORI_HERDR_SESSION` | | 名前付きのherdrセッション |
+| `DORI_RUNTIME` | PATHにある方、`herdr` か `hc` | 新しいセッションをどのランタイムで開くか、`herdr` か `hc`。`$DORI_HOME/config.json` の `runtime` キーも同じ働きをします。両方ある、またはどちらもなく、何も設定されていなければ `dori` は推測せずに拒否します |
 | `DORI_CMD` | `src/cli.ts` へのフルパス | エージェントにdoriをどう呼ばせるか |
 | `DORI_PROMPTS_DIR` | リポジトリの `prompts/` | 自分用のプロンプトファイル |
 | `DORI_MAX_LANES`, `DORI_MAX_STARTS`, `DORI_MAX_LOAD` | 3、2、コア数 | 毎時ループの予算 |
@@ -275,7 +276,7 @@ doriはomoと同じ方法で匿名の利用カウントを送ります。OTLP/HT
 ## テストと開発
 
 ```sh
-bun test ./test/                                  # the harness: 275 tests across 24 files, no model calls
+bun test ./test/                                  # the harness: 344 tests across 34 files, no model calls
 cd skills/dori-mode/scripts && bun install && bun test   # Dori mode: 308 tests across 23 files
 bun run ci                                        # biome, tsc, knip, the 250-line check, both suites
 ```

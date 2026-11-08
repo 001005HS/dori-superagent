@@ -15,7 +15,7 @@ Dori lives in your Slack, Discord or Telegram. You tell him what to do in a thre
 
 This repository, `dori-superagent`, is Dori under the Sustainable Use License. Dori mode (`skills/dori-mode`) is the bot you talk to: a skill for your coding agent plus a `dori` CLI that opens, tracks and closes the sessions doing the work, and talks to Slack, Discord and Telegram.
 
-The harness (`src/`) is the machine room behind him: one lead session, a duty loop, an hourly loop, as many lanes as the host carries, and a merge gate, in about 3,500 lines of TypeScript on [Bun](https://bun.sh) with no runtime dependencies. It runs on [herdr](https://github.com/herdrdev/herdr), the terminal runtime the sessions live in, and [omo](https://github.com/code-yeongyu/oh-my-openagent), the coding agent, which has 70.8k stars on GitHub.
+The harness (`src/`) is the machine room behind him: one lead session, a duty loop, an hourly loop, as many lanes as the host carries, and a merge gate, in about 4,000 lines of TypeScript on [Bun](https://bun.sh) with no runtime dependencies. It runs on [herdr](https://github.com/herdrdev/herdr), the terminal runtime the sessions live in, and [omo](https://github.com/code-yeongyu/oh-my-openagent), the coding agent, which has 70.8k stars on GitHub.
 
 ## What you get
 
@@ -245,6 +245,7 @@ Harness environment:
 | `DORI_HOME` | `~/.dori` | state directory |
 | `DORI_AGENT_CMD` | `omo` | the agent each pane runs |
 | `DORI_HERDR_SESSION` | | a named herdr session |
+| `DORI_RUNTIME` | the one of `herdr` and `hc` on PATH | which runtime new sessions open on, `herdr` or `hc`; the `runtime` key in `$DORI_HOME/config.json` does the same, and with both or neither binary on PATH and nothing set, `dori` refuses to guess |
 | `DORI_CMD` | full path to `src/cli.ts` | how the agents are told to call dori |
 | `DORI_PROMPTS_DIR` | the repo's `prompts/` | your own prompt files |
 | `DORI_MAX_LANES`, `DORI_MAX_STARTS`, `DORI_MAX_LOAD` | 3, 2, core count | hourly loop budget |
@@ -275,7 +276,7 @@ Every record also carries the service name and version, the install hash, a CI f
 ## Tests and development
 
 ```sh
-bun test ./test/                                  # the harness: 275 tests across 24 files, no model calls
+bun test ./test/                                  # the harness: 344 tests across 34 files, no model calls
 cd skills/dori-mode/scripts && bun install && bun test   # Dori mode: 308 tests across 23 files
 bun run ci                                        # biome, tsc, knip, the 250-line check, both suites
 ```

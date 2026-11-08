@@ -15,7 +15,7 @@ Dori wohnt in deinem Slack, Discord oder Telegram. Du sagst ihm in einem Thread,
 
 Dieses Repository, `dori-superagent`, ist Dori unter der Sustainable Use License. Dori mode (`skills/dori-mode`) ist der Bot, mit dem du redest: ein Skill für deinen Coding-Agent plus eine `dori`-CLI, die die arbeitenden Sessions öffnet, verfolgt und schließt und mit Slack, Discord und Telegram spricht.
 
-Der Harness (`src/`) ist der Maschinenraum dahinter: eine Lead-Session, ein Duty-Loop, ein stündlicher Loop (hourly loop), so viele Lanes, wie der Host trägt, und ein Merge-Gate, in rund 3.500 Zeilen TypeScript auf [Bun](https://bun.sh) ohne Laufzeitabhängigkeiten. Er läuft auf [herdr](https://github.com/herdrdev/herdr), der Terminal-Laufzeitumgebung, in der die Sessions leben, und auf [omo](https://github.com/code-yeongyu/oh-my-openagent), dem Coding-Agent mit 70,8k Sternen auf GitHub.
+Der Harness (`src/`) ist der Maschinenraum dahinter: eine Lead-Session, ein Duty-Loop, ein stündlicher Loop (hourly loop), so viele Lanes, wie der Host trägt, und ein Merge-Gate, in rund 4.000 Zeilen TypeScript auf [Bun](https://bun.sh) ohne Laufzeitabhängigkeiten. Er läuft auf [herdr](https://github.com/herdrdev/herdr), der Terminal-Laufzeitumgebung, in der die Sessions leben, und auf [omo](https://github.com/code-yeongyu/oh-my-openagent), dem Coding-Agent mit 70,8k Sternen auf GitHub.
 
 ## Was du bekommst
 
@@ -245,6 +245,7 @@ Umgebung des Harness:
 | `DORI_HOME` | `~/.dori` | Zustandsverzeichnis |
 | `DORI_AGENT_CMD` | `omo` | der Agent, den jedes Pane ausführt |
 | `DORI_HERDR_SESSION` | | eine benannte herdr-Session |
+| `DORI_RUNTIME` | das eine von `herdr` und `hc` auf dem PATH | auf welcher Laufzeit neue Sessions öffnen, `herdr` oder `hc`; der Schlüssel `runtime` in `$DORI_HOME/config.json` tut dasselbe, und wenn beide oder keines der Programme auf dem PATH liegen und nichts gesetzt ist, rät `dori` nicht |
 | `DORI_CMD` | voller Pfad zu `src/cli.ts` | wie die Agents dori aufrufen sollen |
 | `DORI_PROMPTS_DIR` | `prompts/` des Repos | deine eigenen Prompt-Dateien |
 | `DORI_MAX_LANES`, `DORI_MAX_STARTS`, `DORI_MAX_LOAD` | 3, 2, Anzahl der Kerne | Budget des stündlichen Loops |
@@ -275,7 +276,7 @@ Jeder Eintrag enthält außerdem den Dienstnamen und die Version, den Installati
 ## Tests und Entwicklung
 
 ```sh
-bun test ./test/                                  # the harness: 275 tests across 24 files, no model calls
+bun test ./test/                                  # the harness: 344 tests across 34 files, no model calls
 cd skills/dori-mode/scripts && bun install && bun test   # Dori mode: 308 tests across 23 files
 bun run ci                                        # biome, tsc, knip, the 250-line check, both suites
 ```
