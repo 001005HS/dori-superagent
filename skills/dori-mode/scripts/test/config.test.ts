@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { join } from "node:path";
 
 import { ConfigError, fill, loadConfig } from "../src/config.ts";
-import { footer } from "../src/launch.ts";
+import { footer } from "../src/launch-footer.ts";
 import { withState } from "./fakes.ts";
 
 const state = withState();
