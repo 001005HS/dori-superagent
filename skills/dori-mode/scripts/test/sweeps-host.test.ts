@@ -109,3 +109,11 @@ test("a slot whose owner is alive is not taken", async () => {
     acquireSlot({ dir, slots: 1, maxLoad: 80, clock, pid: 7, load: async () => 10, alive: () => true }, "x", 1),
   ).rejects.toThrow("stop");
 });
+
+test("an unknown session count (-1) is an alert, not a pass", () => {
+  const t = { loadAlert: 150, loadOk: 80, memFreeMinPct: 20, diskFreeMinGb: 50, panesMax: 20 };
+  const st = { alerting: false, computeReady: true };
+  const healthy = { load1: 40, memFreePct: 50, diskFreeGb: 200, swapFreeGb: 4, panes: 5 };
+  expect(guardTick({ ...healthy, panes: -1 }, t, st)).toEqual(["HOST_GUARD ALERT session count unknown"]);
+  expect(guardTick({ ...healthy, panes: -1 }, { ...t, panesMax: 0 }, st)[0]).toStartWith("HOST_GUARD CLEAR");
+});
