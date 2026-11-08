@@ -144,7 +144,7 @@ dori backlog import owner/repo --label dori     # label p1..p9 sets the priority
 
 ### 2つのセッションランタイム
 
-セッションはherdrかhc（[herdr-core](https://releases.herdr.dev/core/install.sh)）の上で動き、ひとつのホームに両方のセッションを置けます。ハーネスは `src/runtime/` のひとつのインターフェースを通してそれらと話し、保存されたレーンと役割はどのランタイムが自分を開いたかを覚えているので、どちらが選ばれていてもコマンドは正しい側に届きます。新しいセッションは `DORI_RUNTIME` が名指すランタイム、なければ `$DORI_HOME/config.json` の `"runtime": "herdr"` か `"runtime": "hc"` で開きます。どちらも設定がなければ、hcのターミナル内ではhc、herdrのペイン内ではherdr、それ以外ではPATHにある方のひとつをDoriが選びます。両方ある、またはどちらもない場合は、1行の直し方を添えて拒否します。`dori status` はその選択を最初に `RUNTIME hc (from config)` のように表示します。
+セッションはherdrかhc（[herdr-core](https://releases.herdr.dev/core/install.sh)）の上で動き、ひとつのホームに両方のセッションを置けます。ハーネスは `src/runtime/` のひとつのインターフェースを通してそれらと話し、保存されたレーンと役割はどのランタイムが自分を開いたかを覚えているので、どちらが選ばれていてもコマンドは正しい側に届きます。新しいセッションは `DORI_RUNTIME` が名指すランタイム、なければ `$DORI_HOME/config.json` の `"runtime": "herdr"` か `"runtime": "hc"` で開きます。どちらも設定がなければ、hcのターミナル内ではhc、herdrのペイン内ではherdr、それ以外ではhcが入っていればhc、なければherdrをDoriが選びます。hcが既定のランタイムで、どちらもPATHにない場合だけ、1行の直し方を添えて拒否します。`dori status` はその選択を最初に `RUNTIME hc (from config)` のように表示します。
 
 hcにはワークスペースもタブもありません。Doriはセッションごとにラベル付きのターミナルをひとつ開き、セッションの状態はエージェント自身の報告（最近のomoビルドが送るOSC 7501シーケンス）だけから得ます。一度も報告しないエージェントは `unknown` のままで、宛てたメッセージはインボックスで待ちます。`dori migrate --to hc --all`（または `--lane <key>`、`--role duty-loop`、計画だけ見るなら `--dry-run`）はセッションをもう一方のランタイムへ移します。引き継ぎブリーフを取り、代わりのセッションを開き、インボックスを移し、古いセッションを閉じて、セッションごとに `MIGRATED`、`SKIP`、`DEFERRED`、`MIGRATE_ROLLBACK` のいずれかを表示します。動詞ごとの対応は [`docs/runtime.md`](docs/runtime.md) にあります。
 
@@ -251,7 +251,7 @@ omo自体もこの方法で作られています。2026-07-13から2026-11-08の
 | `DORI_HOME` | `~/.dori` | 状態ディレクトリ |
 | `DORI_AGENT_CMD` | `omo` | 各ペインで動かすエージェント |
 | `DORI_HERDR_SESSION` | | 名前付きのherdrセッション |
-| `DORI_RUNTIME` | いま自分がいるランタイム、なければPATHにある方（`herdr` か `hc`） | 新しいセッションをどのランタイムで開くか。`herdr` か、`hc`（herdr-core、同じプロジェクトの画面なしのセッションランタイム）です。`$DORI_HOME/config.json` の `runtime` キーも同じ働きをします。両方ある、またはどちらもなく、何も設定されておらず、どちらのペインやターミナルの中でもなければ、`dori` は推測せずに拒否します |
+| `DORI_RUNTIME` | いま自分がいるランタイム、なければPATHにある `hc`、それもなければ `herdr` | 新しいセッションをどのランタイムで開くか。`herdr` か、`hc`（herdr-core、同じプロジェクトの画面なしのセッションランタイム）です。`$DORI_HOME/config.json` の `runtime` キーも同じ働きをします。どちらもPATHになく、何も設定されておらず、どちらのペインやターミナルの中でもなければ、`dori` は1行の直し方を添えて拒否します |
 | `DORI_CMD` | `src/cli.ts` へのフルパス | エージェントにdoriをどう呼ばせるか |
 | `DORI_PROMPTS_DIR` | リポジトリの `prompts/` | 自分用のプロンプトファイル |
 | `DORI_MAX_LANES`, `DORI_MAX_STARTS`, `DORI_MAX_LOAD` | 3、2、コア数 | 毎時ループの予算 |

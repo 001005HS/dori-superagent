@@ -10,7 +10,8 @@ export class RuntimeChoiceError extends Error {}
 /** A runtime setting that is present but unusable (bad value, unreadable config file). */
 export class ConfigError extends Error {}
 
-// A record keyed by kind, so a new RuntimeKind cannot be left out here; key order (herdr first) is the order checked.
+// A record keyed by kind, so a new RuntimeKind cannot be left out here. Key order is not a preference: PATH detection
+// asks for hc first, then herdr, whatever order the keys or the PATH entries have.
 const KIND_SET: Readonly<Record<RuntimeKind, true>> = { herdr: true, hc: true };
 const KINDS = Object.keys(KIND_SET) as RuntimeKind[];
 const isKind = (value: unknown): value is RuntimeKind => KINDS.some((k) => k === value);

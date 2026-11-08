@@ -66,8 +66,14 @@ describe("readRuntimeChoice precedence", () => {
     ],
     ["only herdr on PATH", { PATH: pathWith("herdr") }, undefined, "herdr", "detect:path"],
     ["only hc on PATH", { PATH: pathWith("hc") }, '{"other":true}', "hc", "detect:path"],
-    ["both on PATH: hc is the default", { PATH: pathWith("herdr", "hc") }, undefined, "hc", "detect:path"],
-    ["both on PATH, herdr first: still hc", { PATH: pathWith("hc", "herdr") }, "{}", "hc", "detect:path"],
+    [
+      "both on PATH, herdr's directory first: hc is the default",
+      { PATH: pathWith("herdr", "hc") },
+      undefined,
+      "hc",
+      "detect:path",
+    ],
+    ["both on PATH, hc's directory first: still hc", { PATH: pathWith("hc", "herdr") }, "{}", "hc", "detect:path"],
     [
       "empty variables count as unset",
       { DORI_RUNTIME: "", HC_TERMINAL_ID: "", HERDR_PANE_ID: "", PATH: pathWith("hc") },

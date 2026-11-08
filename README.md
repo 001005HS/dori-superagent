@@ -144,7 +144,7 @@ State is JSON on disk under `~/.dori` (or `$DORI_HOME`): `lanes/`, `inbox/`, `br
 
 ### Two session runtimes
 
-Sessions run on herdr or on hc ([herdr-core](https://releases.herdr.dev/core/install.sh)), and one home can hold sessions on both. The harness talks to them through one interface in `src/runtime/`, and every stored lane and role remembers which runtime opened it, so commands on it go there whatever runtime is selected. New sessions open on the runtime named by `DORI_RUNTIME`, else by `"runtime": "herdr"` or `"runtime": "hc"` in `$DORI_HOME/config.json`; with neither set, Dori picks hc inside an hc terminal, herdr inside a herdr pane, and otherwise the one binary on PATH. Both binaries or neither is refused with a one-line fix. `dori status` prints the choice first, as `RUNTIME hc (from config)`.
+Sessions run on herdr or on hc ([herdr-core](https://releases.herdr.dev/core/install.sh)), and one home can hold sessions on both. The harness talks to them through one interface in `src/runtime/`, and every stored lane and role remembers which runtime opened it, so commands on it go there whatever runtime is selected. New sessions open on the runtime named by `DORI_RUNTIME`, else by `"runtime": "herdr"` or `"runtime": "hc"` in `$DORI_HOME/config.json`; with neither set, Dori picks hc inside an hc terminal, herdr inside a herdr pane, and otherwise hc when it is installed, else herdr. hc is the default runtime; neither binary on PATH is refused with a one-line fix. `dori status` prints the choice first, as `RUNTIME hc (from config)`.
 
 On hc there are no workspaces or tabs: Dori opens one labelled terminal per session, and a session's status comes only from the agent's own report (an OSC 7501 sequence, which recent omo builds send); an agent that never reports stays `unknown` and its messages wait in the inbox. `dori migrate --to hc --all` (or `--lane <key>`, `--role duty-loop`, with `--dry-run` to see the plan) moves sessions to the other runtime: it captures a handoff brief, opens the replacement, moves the inbox and closes the old session, printing `MIGRATED`, `SKIP`, `DEFERRED` or `MIGRATE_ROLLBACK` per session. The verb-by-verb mapping is in [`docs/runtime.md`](docs/runtime.md).
 
@@ -251,7 +251,7 @@ Harness environment:
 | `DORI_HOME` | `~/.dori` | state directory |
 | `DORI_AGENT_CMD` | `omo` | the agent each pane runs |
 | `DORI_HERDR_SESSION` | | a named herdr session |
-| `DORI_RUNTIME` | the runtime you are inside, else the one of `herdr` and `hc` on PATH | which runtime new sessions open on: `herdr`, or `hc` (herdr-core, the headless session runtime from the same project); the `runtime` key in `$DORI_HOME/config.json` does the same, and with both or neither binary on PATH, nothing set and no pane or terminal of either around you, `dori` refuses to guess |
+| `DORI_RUNTIME` | the runtime you are inside, else `hc` when it is on PATH, else `herdr` | which runtime new sessions open on: `herdr`, or `hc` (herdr-core, the headless session runtime from the same project); the `runtime` key in `$DORI_HOME/config.json` does the same, and with neither binary on PATH, nothing set and no pane or terminal of either around you, `dori` refuses with a one-line fix |
 | `DORI_CMD` | full path to `src/cli.ts` | how the agents are told to call dori |
 | `DORI_PROMPTS_DIR` | the repo's `prompts/` | your own prompt files |
 | `DORI_MAX_LANES`, `DORI_MAX_STARTS`, `DORI_MAX_LOAD` | 3, 2, core count | hourly loop budget |
