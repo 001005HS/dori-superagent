@@ -1,5 +1,6 @@
 import { DeliveryUncertain, HerdrError } from "./herdr.ts";
 import { prompt, Refusal, sendOrThrow, tellLead, type Deps } from "./harness.ts";
+import { runHook } from "./hooks.ts";
 import { flushInbox } from "./inbox.ts";
 
 export const NUDGE_MINUTES = [10, 20, 40] as const;
@@ -52,6 +53,7 @@ export async function dutyTick(d: Deps): Promise<DutyEvent[]> {
         lane.status = "lost";
         lane.log.push({ at: now, kind: "lost", text: "pane disappeared without READY" });
         d.store.saveLane(lane);
+        void runHook(d, "onLost", { key: lane.key, text: "pane disappeared without READY", evidence: "" });
         await tellLead(d, `[LOST ${lane.key}] pane ${lane.paneId} closed without a final answer`, "duty");
         events.push({ lane: lane.key, action: "lost" });
         continue;
