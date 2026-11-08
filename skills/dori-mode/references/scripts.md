@@ -20,7 +20,7 @@ Needs: bun 1.3+, herdr or hc, git, and the GitHub CLI (`gh`) for `merged`/`close
 
 | Field | Default | Used by |
 |---|---|---|
-| `runtime` | detected | every command that opens or reads a session: `"herdr"` or `"hc"`. Unset, the Dori picks hc inside an hc terminal (`HC_TERMINAL_ID`), herdr inside a herdr pane (`HERDR_PANE_ID`), else the one of the two on PATH, and refuses when both or neither are there. Lanes already open stay on the runtime that opened them |
+| `runtime` | detected | every command that opens or reads a session: `"herdr"` or `"hc"`. Unset, the Dori picks hc inside an hc terminal (`HC_TERMINAL_ID`), herdr inside a herdr pane (`HERDR_PANE_ID`), else hc when it is on PATH, else herdr, and refuses only when neither is there. Lanes already open stay on the runtime that opened them |
 | `stateDir` | `~/.dori/state` | registry, heavy slots |
 | `laneWorkspace` | current workspace | `launch`: the herdr workspace, or on hc the `dori.group` label (default `dori`) |
 | `workspaces` | all | `sync`, `dead-panes`: herdr workspaces, or `dori.group` labels on hc |
