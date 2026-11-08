@@ -32,16 +32,18 @@ export async function dutyTick(d: Deps): Promise<DutyEvent[]> {
     const paneId = refText(ref);
     try {
       const result = await flushInbox(d, ref);
+      // flushInbox follows a `.forward` marker; the counts are read where the entries live now.
+      const at = d.store.forwardOf(ref) ?? ref;
       if (result === "delivered") events.push({ pane: paneId, action: "flushed" });
       if (result === "no-agent") {
         events.push({
           pane: paneId,
           action: "inbox-held",
-          detail: `no agent in front; ${d.store.queued(ref).length} message(s) kept`,
+          detail: `no agent in front; ${d.store.queued(at).length} message(s) kept`,
         });
       }
       // Held after an ambiguous delivery (#89): shown on every pass, resent never; the lead was told once.
-      const held = d.store.queued(ref).filter((m) => m.attempt?.state === "ambiguous").length;
+      const held = d.store.queued(at).filter((m) => m.attempt?.state === "ambiguous").length;
       if (held > 0)
         events.push({ pane: paneId, action: "delivery-ambiguous", detail: `${held} message(s) held, not resent` });
     } catch (e) {

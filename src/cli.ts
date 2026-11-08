@@ -7,6 +7,7 @@ import { mergeGate, review } from "./gate.ts";
 import { defaultDeps, Refusal, send, ROLES, type Deps, type SendResult } from "./harness.ts";
 import { ConfigError, hooksSettled } from "./hooks.ts";
 import { inboxList, releaseHeld, sendToShell } from "./inbox.ts";
+import { runMigrate } from "./migrate.ts";
 import { refText } from "./refs.ts";
 import { ConfigError as RuntimeConfigError, RuntimeChoiceError } from "./runtime/select.ts";
 import { parseRef } from "./runtime/types.ts";
@@ -35,6 +36,9 @@ export const USAGE = `dori - a proactive multi-session harness on herdr or hc + 
   dori review <owner/repo#N> [--model M]      fresh omo reviewer at the exact head -> receipt
   dori merge <owner/repo#N> [--dry-run]       CLEAR receipt at head + green checks -> squash merge
   dori done <key>                             lead closes a READY lane
+  dori migrate [--to hc|herdr] (--lane K | --role lead|duty|duty-loop|hourly-loop | --all) [--dry-run]
+               [--wait-minutes N] [--resume]  hand sessions over to another runtime; MIGRATED, SKIP, DEFERRED,
+                                              or MIGRATE_ROLLBACK (exit 3) per session
   dori status
 
 --text may be omitted to read the message from stdin.
@@ -57,13 +61,14 @@ const COMMANDS = new Set([
   "status",
   "loop",
   "backlog",
+  "migrate",
 ]);
 
 export type Args = { pos: string[]; flags: Map<string, string[]> };
 
 // Flags that never take a value. Every other flag takes the next argument verbatim, even one starting with "--", so a
 // relayed value such as `--from "$SENDER"` or `--text "$MSG"` can never turn into a flag like --to-shell (#66).
-const BOOLEAN_FLAGS: ReadonlySet<string> = new Set(["once", "force", "dry-run", "to-shell"]);
+const BOOLEAN_FLAGS: ReadonlySet<string> = new Set(["once", "force", "dry-run", "to-shell", "all", "resume"]);
 
 function parse(argv: readonly string[]): Args {
   const pos: string[] = [];
@@ -191,6 +196,8 @@ export async function main(argv: readonly string[], d: Deps = defaultDeps()): Pr
       await done(d, need(x, "lane key"));
       console.log(`DONE ${x}`);
       return 0;
+    case "migrate":
+      return runMigrate(d, a);
     case "status":
       status(d);
       return 0;
