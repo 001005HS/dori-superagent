@@ -49,7 +49,9 @@ jobs:
       - name: Install herdr 0.9.5
         run: |
           mkdir -p "$HOME/.local/bin"
-          curl -fsSL -o "$HOME/.local/bin/herdr" https://github.com/herdrdev/herdr/releases/download/v0.9.5/herdr-linux-x86_64
+          # Up to 3 attempts: --retry covers timeouts, 408, 429 and 5xx (a 504 from the
+          # release CDN failed this job), --retry-connrefused adds refused connections. 404 is never retried.
+          curl -fsSL --retry 2 --retry-delay 2 --retry-connrefused -o "$HOME/.local/bin/herdr" https://github.com/herdrdev/herdr/releases/download/v0.9.5/herdr-linux-x86_64
           echo "14d9e8bc8b4a9e0118d77c32266f76d461f09b40342eb23752960bd89f59929d  $HOME/.local/bin/herdr" | sha256sum -c -
           chmod +x "$HOME/.local/bin/herdr"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
