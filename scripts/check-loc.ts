@@ -1,11 +1,14 @@
 /**
  * The 250-line rule: no TypeScript source or test file may exceed MAX_LINES.
  *
- * Files that were already over the cap when the rule landed are listed in loc-baseline.json with their line count at
- * that time. The baseline is a ratchet: a listed file may shrink but never grow, and an entry whose file is back under
- * the cap (or gone) is refused, so the list can only get shorter until it is empty.
+ * Files that were already over the cap when the rule landed are listed in loc-baseline.json with their exact line
+ * count. The baseline is a ratchet: every entry must equal the measured count, so a listed file can never grow (a
+ * larger count is LOC_GREW) and a shrink must lower its entry in the same change (a smaller count is LOC_LOOSE), and an
+ * entry whose file is back under the cap (or gone) is refused (LOC_STALE), so the list can only get shorter until it
+ * is empty.
  *
- * Prints `LOC_OK <n> files` and exits 0, or one `LOC_OVER` / `LOC_GREW` / `LOC_STALE` line per problem and exits 1.
+ * Prints `LOC_OK <n> files` and exits 0, or one `LOC_OVER` / `LOC_GREW` / `LOC_LOOSE` / `LOC_STALE` line per problem
+ * and exits 1.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
@@ -63,6 +66,8 @@ const checkLoc = (root: string): { readonly files: number; readonly problems: re
     if (n <= MAX_LINES) continue;
     if (allowed === undefined) problems.push(`LOC_OVER ${file} ${n}`);
     else if (n > allowed) problems.push(`LOC_GREW ${file} ${n} (baseline ${allowed})`);
+    else if (n < allowed)
+      problems.push(`LOC_LOOSE ${file} is ${n} lines but the baseline allows ${allowed}: set the entry to ${n}`);
   }
   for (const [file, allowed] of Object.entries(baseline)) {
     const n = counts.get(file);
