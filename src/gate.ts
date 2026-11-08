@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { prompt, Refusal, type Deps } from "./harness.ts";
+import { loadHooks, substitute } from "./hooks.ts";
 import type { MergeOutcome } from "./telemetry.ts";
 
 export type PrRef = { repo: string; number: number; id: string };
@@ -30,10 +31,15 @@ export async function review(
   model?: string,
 ): Promise<{ verdict: "CLEAR" | "BLOCK"; sha: string }> {
   const pr = parsePr(prId);
+  // hooks.reviewCommand replaces the built-in reviewer; it must print a VERDICT line like the built-in one.
+  const hook = loadHooks(d.store.root).reviewCommand;
   const sha = await headSha(d, pr);
-  const text = prompt("review.md", { pr: pr.id, repo: pr.repo, number: String(pr.number), sha });
-  const argv = ["-p", "--no-session", ...(model ? ["--model", model] : []), text];
-  const res = await d.exec(d.agentCmd, argv);
+  const vars = { pr: pr.id, repo: pr.repo, number: String(pr.number), sha };
+  const text = prompt("review.md", vars);
+  const [cmd, ...argv] = hook
+    ? substitute(hook, { ...vars, text })
+    : [d.agentCmd, "-p", "--no-session", ...(model ? ["--model", model] : []), text];
+  const res = await d.exec(cmd ?? d.agentCmd, argv);
   const verdicts = [...res.stdout.matchAll(/^VERDICT:\s*(CLEAR|BLOCK)\b/gm)];
   const last = verdicts.at(-1);
   if (!last) {
@@ -52,7 +58,7 @@ export async function review(
     pr: pr.id,
     sha,
     verdict,
-    model: model ?? "default",
+    model: hook ? "hook" : (model ?? "default"),
     at: d.now(),
     summary: res.stdout.trim().slice(-4000),
   });
