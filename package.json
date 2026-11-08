@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "A proactive multi-session coding-agent harness in ~1,600 lines, running on herdr + omo.",
   "type": "module",
-  "license": "MIT",
+  "license": "SUL-1.0",
   "packageManager": "bun@1.4.4",
   "bin": {
     "dori": "src/cli.ts"
