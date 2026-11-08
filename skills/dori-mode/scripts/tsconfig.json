@@ -4,5 +4,5 @@
     "module": "Preserve",
     "lib": ["ESNext"]
   },
-  "include": ["src", "test", "../../../src/runtime"]
+  "include": ["src", "test"]
 }
