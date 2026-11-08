@@ -1,8 +1,8 @@
 import { afterEach, expect, test } from "bun:test";
 import { join } from "node:path";
 
-import { fill, loadConfig } from "../src/config.ts";
-import { footer } from "../src/launch.ts";
+import { ConfigError, fill, loadConfig } from "../src/config.ts";
+import { footer } from "../src/launch-footer.ts";
 import { withState } from "./fakes.ts";
 
 const state = withState();
@@ -16,6 +16,7 @@ test("the shipped example config loads, with ~ paths expanded and unset fields d
   expect(c.defaultCwd).toBe("/home/ana/code/my-project");
   expect(c.closeAfterMin).toBe(5);
   expect(c.guard.diskFreeMinGb).toBe(50);
+  expect(c.runtime).toBe("herdr");
 });
 
 test("a missing config file falls back to defaults and DORI_STATE_DIR wins over the file", async () => {
@@ -76,6 +77,20 @@ test("a goalMarker that is not a string falls back to the default, so a typo nev
   // An empty string is the documented way to turn the check off, so it is kept.
   await Bun.write(path, JSON.stringify({ goalMarker: "" }));
   expect((await loadConfig(path, "/home/ana")).goalMarker).toBe("");
+});
+
+test("runtime is herdr, hc or absent; any other value stops the load with ConfigError", async () => {
+  const path = join(state.dir, "config.json");
+  for (const value of ["herdr", "hc"] as const) {
+    await Bun.write(path, JSON.stringify({ runtime: value }));
+    expect((await loadConfig(path, "/home/ana")).runtime).toBe(value);
+  }
+  await Bun.write(path, JSON.stringify({}));
+  expect((await loadConfig(path, "/home/ana")).runtime).toBeUndefined();
+  for (const value of ["x", "HC", "", null, 1, ["hc"]]) {
+    await Bun.write(path, JSON.stringify({ runtime: value }));
+    await expect(loadConfig(path, "/home/ana")).rejects.toBeInstanceOf(ConfigError);
+  }
 });
 
 test("hook templates fill each argument separately, so text with spaces or quotes stays one argument", () => {

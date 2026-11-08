@@ -3,7 +3,7 @@ import { existsSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import { main } from "../src/cli.ts";
 import { dutyTick } from "../src/duty.ts";
-import { send } from "../src/harness.ts";
+import { send } from "../src/inbox.ts";
 import { flushInbox } from "../src/inbox.ts";
 import { INBOX_LOCK_STALE_MS } from "../src/store-types.ts";
 import { setup } from "./inbox-setup.ts";

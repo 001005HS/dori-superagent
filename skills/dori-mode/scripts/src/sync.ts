@@ -1,7 +1,9 @@
+import { formatRef } from "../../../../src/runtime/types.ts";
 import type { FlowDeps } from "./done-flow.ts";
-import { listPanes } from "./panes.ts";
 import { statusOf } from "./registry.ts";
+import { runtimesOf } from "./run.ts";
 import { procTable, resolveSession } from "./session-id.ts";
+import { listSessions } from "./sessions.ts";
 
 export type SyncRow = {
   readonly key: string;
@@ -13,20 +15,19 @@ export type SyncRow = {
 export type SyncResult = { readonly rows: SyncRow[]; readonly drift: string[]; readonly unregistered: SyncRow[] };
 
 export const syncRegistry = async (deps: FlowDeps, write: boolean): Promise<SyncResult> => {
-  const panes = await listPanes(deps.run);
-  const live = new Map(panes.map((p) => [p.pane_id, p]));
+  const rts = runtimesOf(deps);
+  const lanes = await deps.registry.open();
+  const sessions = await listSessions(rts, { lanes });
+  const live = new Map(sessions.map((s) => [formatRef(s.ref), s]));
   const table = await procTable(deps.run);
   const rows: SyncRow[] = [];
   const drift: string[] = [];
-  const lanes = await deps.registry.open();
+  const resolveDeps = { run: deps.run, sessionsDir: deps.config.sessionsDir, rts };
   for (const lane of lanes) {
-    const pane = lane.pane ? live.get(lane.pane) : undefined;
-    if (!pane) drift.push(`${lane.key}: pane ${lane.pane ?? "(none)"} is gone but the lane is ${statusOf(lane)}`);
-    const hit = pane
-      ? await resolveSession(pane.pane_id, pane.cwd ?? "", table, {
-          run: deps.run,
-          sessionsDir: deps.config.sessionsDir,
-        })
+    const session = lane.sessionRef ? live.get(formatRef(lane.sessionRef)) : undefined;
+    if (!session) drift.push(`${lane.key}: pane ${lane.pane ?? "(none)"} is gone but the lane is ${statusOf(lane)}`);
+    const hit = session
+      ? await resolveSession(session.ref, session.cwd ?? "", table, resolveDeps)
       : { id: "", via: "none" };
     if (lane.session && hit.id && hit.id !== lane.session)
       drift.push(`${lane.key}: pane now runs session ${hit.id} (registry has ${lane.session})`);
@@ -41,21 +42,19 @@ export const syncRegistry = async (deps: FlowDeps, write: boolean): Promise<Sync
       status: statusOf(lane),
     });
   }
-  const owned = new Set(lanes.map((l) => l.pane));
+  const owned = new Set(lanes.flatMap((l) => (l.sessionRef ? [formatRef(l.sessionRef)] : [])));
   const watch = new Set(deps.config.workspaces);
   const skip = new Set([deps.config.leadPane, ...deps.config.ignorePanes]);
   const unregistered: SyncRow[] = [];
-  for (const p of panes) {
-    if (owned.has(p.pane_id) || skip.has(p.pane_id) || (watch.size > 0 && !watch.has(p.workspace_id))) continue;
-    if (p.agent === undefined) continue;
-    const hit = await resolveSession(p.pane_id, p.cwd ?? "", table, {
-      run: deps.run,
-      sessionsDir: deps.config.sessionsDir,
-    });
+  for (const s of sessions) {
+    const id = s.ref.id;
+    if (owned.has(formatRef(s.ref)) || skip.has(id) || (watch.size > 0 && !watch.has(s.ref.group ?? ""))) continue;
+    if (s.agent === undefined) continue;
+    const hit = await resolveSession(s.ref, s.cwd ?? "", table, resolveDeps);
     unregistered.push({
-      key: p.title ?? p.pane_id,
+      key: s.title ?? s.name ?? id,
       thread: "-",
-      pane: p.pane_id,
+      pane: id,
       session: hit.id ? `${hit.id} (${hit.via})` : "-",
       status: "unregistered",
     });

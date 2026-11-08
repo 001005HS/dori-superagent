@@ -1,22 +1,14 @@
-import { DeliveryUncertain } from "./delivery.ts";
-import { prompt, Refusal, sendOrThrow, tellLead, type Deps } from "./harness.ts";
+import { DeliveryUncertain, failureDetail } from "./delivery.ts";
+import { type Deps, prompt } from "./harness.ts";
 import { runHook } from "./hooks.ts";
-import { flushInbox } from "./inbox.ts";
+import { flushInbox, sendOrThrow, tellLead } from "./inbox.ts";
+import { Refusal } from "./refusal.ts";
 import { refText } from "./refs.ts";
-import { ToolError } from "./runtime/exec.ts";
 import type { Lane } from "./store-types.ts";
 
 export const NUDGE_MINUTES = [10, 20, 40] as const;
 
 export type DutyEvent = { lane?: string; pane?: string; action: string; detail?: string };
-
-/** A short one-line reason. A ToolError message carries the whole argv (the queued text), so use the tool's own output. */
-export function failureDetail(e: unknown): string {
-  if (e instanceof DeliveryUncertain) e = e.failure;
-  const raw = e instanceof ToolError ? e.result.stderr || e.result.stdout : e instanceof Error ? e.message : String(e);
-  const first = raw.trim().split("\n")[0] ?? "";
-  return first.length > 200 ? `${first.slice(0, 200)}...` : first;
-}
 
 /** An open lane the duty loop watches; a lane being migrated is left alone (no nudge, no lost, no activity stamp). */
 const watched = (lane: Lane): boolean =>
@@ -32,16 +24,18 @@ export async function dutyTick(d: Deps): Promise<DutyEvent[]> {
     const paneId = refText(ref);
     try {
       const result = await flushInbox(d, ref);
+      // flushInbox follows a `.forward` marker; the counts are read where the entries live now.
+      const at = d.store.forwardOf(ref) ?? ref;
       if (result === "delivered") events.push({ pane: paneId, action: "flushed" });
       if (result === "no-agent") {
         events.push({
           pane: paneId,
           action: "inbox-held",
-          detail: `no agent in front; ${d.store.queued(ref).length} message(s) kept`,
+          detail: `no agent in front; ${d.store.queued(at).length} message(s) kept`,
         });
       }
       // Held after an ambiguous delivery (#89): shown on every pass, resent never; the lead was told once.
-      const held = d.store.queued(ref).filter((m) => m.attempt?.state === "ambiguous").length;
+      const held = d.store.queued(at).filter((m) => m.attempt?.state === "ambiguous").length;
       if (held > 0)
         events.push({ pane: paneId, action: "delivery-ambiguous", detail: `${held} message(s) held, not resent` });
     } catch (e) {

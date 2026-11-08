@@ -70,7 +70,7 @@ test("dori launch and dori adopt with key lead exit 1 with the reserved message 
   expect(stateFiles()).toEqual(["brief.md", "config.json"]);
 });
 
-test("byPane never returns a record keyed lead left from before the key was reserved", async () => {
+test("bySession never returns a record keyed lead left from before the key was reserved", async () => {
   // Given a legacy registry record named lead on the lead's pane, next to a real lane.
   const registry = new Registry(state.dir);
   const legacy = {
@@ -85,8 +85,8 @@ test("byPane never returns a record keyed lead left from before the key was rese
   await registry.write(legacy);
   await registry.write({ ...legacy, key: "real-lane", pane: "w:p2" });
   // Then the lead's pane resolves to no lane, the lane's pane still resolves, and the record stays readable by key.
-  expect(await registry.byPane("lead:p1")).toBeNull();
-  expect((await registry.byPane("w:p2"))?.key).toBe("real-lane");
+  expect(await registry.bySession({ runtime: "herdr", id: "lead:p1" })).toBeNull();
+  expect((await registry.bySession({ runtime: "herdr", id: "w:p2" }))?.key).toBe("real-lane");
   expect((await registry.read("lead"))?.pane).toBe("lead:p1");
   expect(existsSync(registry.path("lead"))).toBe(true);
 });

@@ -1,8 +1,9 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import type { SupervisionOptions } from "./supervision.ts";
-import type { CommitIdentity } from "./verify-pr.ts";
+import type { RuntimeKind } from "../../../../src/runtime/types.ts";
+import type { SupervisionOptions } from "./supervision-observe.ts";
+import type { CommitIdentity } from "./verify-pr-check.ts";
 
 export type ArgvTemplate = readonly string[];
 
@@ -21,6 +22,8 @@ export type GuardThresholds = {
 };
 
 export type DoriConfig = {
+  /** Where new sessions open; absent = detected (see run.ts runtimeChoice). */
+  readonly runtime?: RuntimeKind;
   readonly stateDir: string;
   readonly laneWorkspace: string;
   readonly workspaces: readonly string[];
@@ -102,6 +105,16 @@ const repoIdentities = (value: unknown): Record<string, CommitIdentity> =>
 
 export class ConfigError extends Error {}
 
+const RUNTIMES: Readonly<Record<RuntimeKind, true>> = { herdr: true, hc: true };
+const checkRuntime = (value: unknown): void => {
+  if (value !== undefined && !(typeof value === "string" && Object.hasOwn(RUNTIMES, value)))
+    throw new ConfigError(
+      `invalid runtime: expected ${Object.keys(RUNTIMES)
+        .map((k) => JSON.stringify(k))
+        .join(" or ")}, got ${JSON.stringify(value)}`,
+    );
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -156,6 +169,7 @@ export const loadConfig = async (path = configPath(), home = homedir()): Promise
   const base = defaultConfig(home);
   const file = Bun.file(path);
   const raw = (await file.exists()) ? ((await file.json()) as Partial<DoriConfig>) : {};
+  checkRuntime(raw.runtime);
   checkSupervision(raw.supervision);
   const merged: DoriConfig = {
     ...base,

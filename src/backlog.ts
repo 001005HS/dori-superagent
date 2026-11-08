@@ -1,7 +1,8 @@
 import { appendFileSync, copyFileSync, existsSync, rmSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
-import { KEY_RE, Refusal, reservedKey, type Deps } from "./harness.ts";
+import { KEY_RE, reservedKey, type Deps } from "./harness.ts";
+import { Refusal } from "./refusal.ts";
 import type { Item } from "./store-types.ts";
 
 export function log(d: Deps, item: Item, kind: Item["log"][number]["kind"], text: string): void {

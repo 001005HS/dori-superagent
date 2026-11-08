@@ -1,6 +1,9 @@
 import { mkdirSync, readdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
-import type { BudgetLimits } from "./supervision.ts";
+
+import { HerdrRuntime } from "../../../../src/runtime/herdr/index.ts";
+import type { SessionRef } from "../../../../src/runtime/types.ts";
+import type { BudgetLimits } from "./supervision-observe.ts";
 
 export const LANE_KEY = /^[a-z0-9][a-z0-9._-]{1,60}$/;
 /**
@@ -19,6 +22,8 @@ export type Lane = {
   readonly key: string;
   readonly title: string;
   readonly thread: string;
+  /** The lane's session on its runtime. `pane`/`tab` mirror its id and container for older readers. */
+  readonly sessionRef?: SessionRef;
   readonly pane?: string | undefined;
   readonly tab?: string;
   readonly session?: string;
@@ -55,6 +60,28 @@ export type Lane = {
   readonly receipt?: unknown;
 };
 
+/** Records written before runtimes existed name a herdr pane (and tab): the only runtime the skill spoke then. */
+const LEGACY_RUNTIME = new HerdrRuntime().kind;
+
+/** A record as read: an older one gains `sessionRef` from its `pane`/`tab`; a newer one keeps what it stored. */
+export const upgradeLane = (lane: Lane): Lane =>
+  lane.sessionRef || !lane.pane
+    ? lane
+    : { ...lane, sessionRef: { runtime: LEGACY_RUNTIME, id: lane.pane, ...(lane.tab ? { container: lane.tab } : {}) } };
+
+/** The lane's session, whichever way the record was written (or built in memory). */
+export const sessionOf = (lane: Lane): SessionRef | undefined => upgradeLane(lane).sessionRef;
+
+/** The fields a lane record stores for a session: the ref itself and the `pane`/`tab` mirror. */
+export const sessionFields = (ref: SessionRef): Pick<Lane, "sessionRef" | "pane" | "tab"> => ({
+  sessionRef: ref,
+  pane: ref.id,
+  ...(ref.container ? { tab: ref.container } : {}),
+});
+
+const sameSession = (a: SessionRef | undefined, b: SessionRef): boolean =>
+  a !== undefined && a.runtime === b.runtime && a.id === b.id;
+
 export const statusOf = (lane: Lane): LaneStatus => (lane.closedAt ? "closed" : (lane.status ?? "working"));
 
 export const withStatus = (
@@ -82,7 +109,7 @@ export class Registry {
 
   async read(key: string): Promise<Lane | null> {
     const f = Bun.file(this.path(key));
-    return (await f.exists()) ? ((await f.json()) as Lane) : null;
+    return (await f.exists()) ? upgradeLane((await f.json()) as Lane) : null;
   }
 
   // temp file + rename so a concurrent reader never sees a half-written lane
@@ -107,7 +134,7 @@ export class Registry {
 
   async list(): Promise<Lane[]> {
     const lanes: Lane[] = [];
-    for (const f of this.files()) lanes.push((await Bun.file(f).json()) as Lane);
+    for (const f of this.files()) lanes.push(upgradeLane((await Bun.file(f).json()) as Lane));
     return lanes;
   }
 
@@ -120,7 +147,7 @@ export class Registry {
         const lane: unknown = await Bun.file(f).json();
         if (typeof lane !== "object" || lane === null || !("key" in lane) || typeof lane.key !== "string")
           throw new Error("not a lane record");
-        lanes.push(lane as Lane);
+        lanes.push(upgradeLane(lane as Lane));
       } catch {
         unreadable.push(f);
       }
@@ -133,10 +160,11 @@ export class Registry {
   }
 
   /**
-   * The open lane in `pane`. A record keyed `lead` (registered before the key was reserved) is never returned, so a
-   * pane lookup cannot mistake the lead for a lane; that record is still read by its key, listed, and closed by hand.
+   * The open lane in session `ref`. A record keyed `lead` (registered before the key was reserved) is never returned, so a
+   * session lookup cannot mistake the lead for a lane; that record is still read by its key, listed, and closed by hand.
    */
-  async byPane(pane: string): Promise<Lane | null> {
-    return (await this.open()).find((l) => l.pane === pane && l.key !== RESERVED_LANE_KEY) ?? null;
+  async bySession(ref: SessionRef | undefined): Promise<Lane | null> {
+    if (!ref) return null;
+    return (await this.open()).find((l) => sameSession(l.sessionRef, ref) && l.key !== RESERVED_LANE_KEY) ?? null;
   }
 }

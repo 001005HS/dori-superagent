@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { backlogAdd, backlogDecide, backlogDrop, backlogImport, importId } from "../src/backlog.ts";
-import { Refusal } from "../src/harness.ts";
+import { Refusal } from "../src/refusal.ts";
 import { HOUR, loopTick } from "../src/loop.ts";
 import { setup } from "./loop-setup.ts";
 

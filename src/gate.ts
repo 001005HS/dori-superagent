@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { prompt, Refusal, type Deps } from "./harness.ts";
+import { prompt, type Deps } from "./harness.ts";
+import { Refusal } from "./refusal.ts";
 import { loadHooks, substitute } from "./hooks.ts";
 import type { MergeOutcome } from "./telemetry.ts";
 

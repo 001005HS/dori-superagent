@@ -1,9 +1,10 @@
 import { existsSync } from "node:fs";
 
 import { type DoriConfig, fill } from "./config.ts";
-import { type Lane, type Registry, statusOf, withStatus } from "./registry.ts";
-import { type Clock, iso, type Runner } from "./run.ts";
-import { sendVerified } from "./panes.ts";
+import type { SessionRef } from "../../../../src/runtime/types.ts";
+import { type Lane, type Registry, sessionOf, statusOf, withStatus } from "./registry.ts";
+import { type ChosenRuntimes, type Clock, iso, type Runner, runtimesOf } from "./run.ts";
+import { sendVerified } from "./sessions.ts";
 import { checkDone, type SignalIo } from "./signals.ts";
 import { Supervision } from "./supervision.ts";
 import { Lessons, type LessonInput } from "./lessons.ts";
@@ -15,6 +16,10 @@ export type FlowDeps = {
   readonly config: DoriConfig;
   readonly exists?: (path: string) => boolean;
   readonly signalIo?: SignalIo;
+  /** The session runtimes; built from `run`, `clock` and `config.runtime` when absent. */
+  readonly rts?: ChosenRuntimes;
+  /** The environment the runtimes are chosen from and run with; process.env when absent. */
+  readonly env?: Readonly<Record<string, string | undefined>>;
 };
 
 const signalIo = (deps: FlowDeps, lane: Lane): SignalIo => ({
@@ -29,12 +34,13 @@ export const claimDone = async (deps: FlowDeps, lane: Lane, evidence: string): P
   await deps.registry.write(
     withStatus(lane, "done-claimed", evidence, at, { claim: { at, evidence, emitted: false } }),
   );
-  if (lane.pane) {
+  const ref = sessionOf(lane);
+  if (ref) {
     const closesAt = new Date(deps.clock.now() + windowMs(deps)).toISOString().slice(11, 16);
     await sendVerified(
-      deps.run,
+      runtimesOf(deps),
       deps.clock,
-      lane.pane,
+      ref,
       `[LEAD] done claim recorded for ${lane.key}: this lane closes automatically at ${closesAt}Z (${deps.config.closeAfterMin} minutes) unless the lead objects with reasons. Stay idle until then; an objection arrives here as [LEAD] not done.`,
     );
   }
@@ -44,11 +50,12 @@ export const claimDone = async (deps: FlowDeps, lane: Lane, evidence: string): P
 export const objectDone = async (deps: FlowDeps, lane: Lane, reasons: readonly string[]): Promise<string> => {
   const at = iso(deps.clock);
   await deps.registry.write(withStatus(lane, "not-done", reasons.join("; "), at, { objection: { at, reasons } }));
-  if (lane.pane)
+  const ref = sessionOf(lane);
+  if (ref)
     await sendVerified(
-      deps.run,
+      runtimesOf(deps),
       deps.clock,
-      lane.pane,
+      ref,
       `[LEAD] not done: ${reasons.join("; ")}; keep working, claim again when fixed`,
     );
   return `LANE_NOT_DONE ${lane.key} ${reasons.join("; ")}`;
@@ -130,18 +137,8 @@ export const closeLane = async (
     const r = await deps.run(fill(hook, { thread: lane.thread, text: note, key: lane.key }));
     cleanup.push(r.code === 0 ? "thread marked done" : `thread hook failed: ${r.err.slice(0, 160)}`);
   }
-  if (lane.tab)
-    cleanup.push(
-      (await deps.run(["herdr", "tab", "close", lane.tab])).code === 0
-        ? `tab ${lane.tab} closed`
-        : `tab ${lane.tab} not closed`,
-    );
-  else if (lane.pane)
-    cleanup.push(
-      (await deps.run(["herdr", "pane", "close", lane.pane])).code === 0
-        ? `pane ${lane.pane} closed`
-        : `pane ${lane.pane} not closed`,
-    );
+  const ref = sessionOf(lane);
+  if (ref) cleanup.push(await closeSession(deps, ref));
   const root = lane.cwd ?? deps.config.defaultCwd;
   for (const wt of (await discoverWorktrees(lane, deps.run, [deps.config.defaultCwd])).filter(exists)) {
     const r = await deps.run(["git", "-C", root, "worktree", "remove", wt]);
@@ -160,6 +157,19 @@ export const closeLane = async (
     }
   }
   return { closed: true, lines: [...lines, `CLOSED ${lane.key} ${JSON.stringify(receipt)}`] };
+};
+
+/** Closes the lane's tab when it has one, else its session; a failed close is named in the receipt, never thrown. */
+const closeSession = async (deps: FlowDeps, ref: SessionRef): Promise<string> => {
+  const what = ref.container ? `tab ${ref.container}` : `pane ${ref.id}`;
+  try {
+    await runtimesOf(deps)
+      .for(ref)
+      .close(ref, ref.container ? "container" : "session");
+    return `${what} closed`;
+  } catch {
+    return `${what} not closed`;
+  }
 };
 
 const settle = async (deps: FlowDeps, lane: Lane, evidence: string): Promise<string> => {

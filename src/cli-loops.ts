@@ -1,7 +1,8 @@
 import { backlogAdd, backlogDecide, backlogDrop, backlogImport, IMPORT_LIMIT } from "./backlog.ts";
-import { need, one, textOf, USAGE, type Args } from "./cli.ts";
+import { need, one, textOf, USAGE, type Args } from "./cli-args.ts";
 import { dutyTick } from "./duty.ts";
-import { Refusal, type Deps } from "./harness.ts";
+import type { Deps } from "./harness.ts";
+import { Refusal } from "./refusal.ts";
 import { HOUR, loopTick, msUntilNext, summary } from "./loop.ts";
 import { acquire, release } from "./loop-lock.ts";
 
