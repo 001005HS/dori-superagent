@@ -1,7 +1,7 @@
 import type { Exec } from "../exec.ts";
 import type { AgentStatus, DeliverOptions, DeliverOutcome, Key } from "../types.ts";
 import { hcCall, isKind } from "./exec.ts";
-import { probe } from "./probe.ts";
+import { type HcProbe, probe, probeWithWord } from "./probe.ts";
 
 const KEY_NAMES: Readonly<Record<Key, string>> = { enter: "enter", escape: "esc" };
 
@@ -31,13 +31,14 @@ export async function deliver(
   opts: DeliverOptions = {},
 ): Promise<DeliverOutcome> {
   const { when = "idle", force = false } = opts;
-  let before: Awaited<ReturnType<typeof probe>>;
+  let probed: HcProbe;
   try {
-    before = await probe(exec, id);
+    probed = await probeWithWord(exec, id);
   } catch (e) {
     process.stderr.write(`dori: hc get ${id} failed (${messageOf(e)}); holding delivery\n`);
     return { kind: "not-ready", status: "unknown" };
   }
+  const before = probed.probe;
   if (before.status === "gone" || before.shellInFront) return { kind: "no-agent" };
   if (!force && (before.status === "blocked" || before.status === "error"))
     return { kind: "not-ready", status: before.status };
@@ -45,7 +46,11 @@ export async function deliver(
   // nothing typed into it whatever `when` says: its state is unknown, so the message stays queued.
   if (before.status === "unknown") return { kind: "not-ready", status: "unknown" };
   // `done` is the program's own "turn finished, waiting": typing is what it waits for, and `--if` takes only idle|working.
-  const gate = when === "any" || (when === "idle" && before.status === "done") ? [] : ["--if", when];
+  // Idle read off the screen while hc's own word is still `working` (#178): gate on that word, so the send stays one
+  // atomic compare-and-send; if omo moves to blocked or idle in between, hc refuses and the message stays queued.
+  const screenIdle = when === "idle" && before.status === "idle" && probed.word === "working";
+  const gate =
+    when === "any" || (when === "idle" && before.status === "done") ? [] : ["--if", screenIdle ? "working" : when];
   const argv = ["send", id, ...gate, ...(force ? ["--force"] : []), "--", text];
   let result: Record<string, unknown>;
   try {

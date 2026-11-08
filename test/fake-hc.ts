@@ -30,6 +30,8 @@ export type FakeKnobs = {
   nameTaken?: boolean;
   /** `get` answers this error kind for every terminal. */
   getError?: string;
+  /** `read` answers this error kind for every terminal. */
+  readError?: string;
 };
 
 const EXIT: Readonly<Record<string, number>> = {
@@ -90,6 +92,7 @@ export class FakeHc {
     if (verb === "ls") return this.ls(args);
     const t = id === undefined ? undefined : this.terminals.get(id);
     if (verb === "get" && this.knobs.getError !== undefined) return fail(this.knobs.getError, "get refused");
+    if (verb === "read" && this.knobs.readError !== undefined) return fail(this.knobs.readError, "read refused");
     if (t === undefined || id === undefined) return fail("not_found", `no terminal "${id ?? ""}"`);
     switch (verb) {
       case "get":
