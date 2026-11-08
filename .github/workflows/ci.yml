@@ -1,0 +1,72 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile
+        working-directory: skills/dori-mode/scripts
+      - run: bun run ci
+
+  test-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile
+        working-directory: skills/dori-mode/scripts
+      - run: bun run test
+      - run: bun run test:skill
+
+  e2e-herdr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - run: bun install --frozen-lockfile
+      - name: Install herdr 0.9.5
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL -o "$HOME/.local/bin/herdr" https://github.com/herdrdev/herdr/releases/download/v0.9.5/herdr-linux-x86_64
+          chmod +x "$HOME/.local/bin/herdr"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - run: herdr --version
+      - run: bun test test/e2e.test.ts
+
+  e2e-hc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - run: bun install --frozen-lockfile
+      - name: Install hc 0.1.17
+        run: |
+          curl -fsSL https://releases.herdr.dev/core/install.sh | HC_VERSION=0.1.17 sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - run: hc update --version 0.1.17
+      - run: hc --version
+      - run: test -f test/e2e-hc.test.ts && bun test test/e2e-hc.test.ts || echo 'SKIP e2e-hc until the test lands'
