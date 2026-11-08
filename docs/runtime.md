@@ -38,8 +38,10 @@ New sessions open on one runtime, picked in this order (`readRuntimeChoice` in `
 When both binaries are on PATH, or neither is, and nothing above decides, Dori refuses to guess and prints the fix in one line:
 
 ```
-both herdr and hc are on PATH: set "runtime": "herdr" or "hc" in ~/.dori/config.json, or DORI_RUNTIME
+both herdr and hc are on PATH: set "runtime": "herdr" or "hc" in <DORI_HOME>/config.json, or DORI_RUNTIME
 ```
+
+(The real message prints the absolute path of your config file.)
 
 An invalid value in `DORI_RUNTIME` or in the config file is an error, never a fallback. `dori status` prints the choice first, as `RUNTIME hc (from config)`; the sources are `env`, `config`, `detect:HC_TERMINAL_ID`, `detect:HERDR_PANE_ID` and `detect:path`. When no runtime can be chosen, it prints `RUNTIME unset:` and the fix. The dori-mode skill's `dori boot` prints the same `RUNTIME` line, or `RUNTIME unavailable:` and fails its check.
 
@@ -70,7 +72,7 @@ Dori reads a session's status before it types anything into it. The words are `i
 
 On herdr the status is herdr's own detection of the agent in the pane. herdr reports an omo with live monitors as `working` even between turns, so when herdr says `working` Dori also reads the screen and believes `idle` only when omo's empty input box is at the bottom.
 
-On hc the status comes only from the agent's own report, an OSC 7501 escape sequence, and Dori never reads the screen to guess it. Recent omo builds emit that report. An agent that never reports stays `unknown`, or `shell` when an interactive shell leads the foreground, and messages to it wait in its inbox, because every delivery to an agent is sent with `--if idle` or `--if working` and hc refuses the send when the status does not match. A `blocked` or `error` agent gets nothing unless the sender forces it. A suspended agent leaves its shell in front, and on both runtimes Dori then holds the message whatever the status word says.
+On hc the status comes only from the agent's own report, an OSC 7501 escape sequence, and Dori never reads the screen to guess it. Recent omo builds emit that report. An agent that never reports stays `unknown`, or `shell` when an interactive shell leads the foreground, and Dori holds every message to it in its inbox without sending. For a reporting agent Dori probes first and then sends: an ordinary message goes with `--if idle` (hc refuses it when the status moved), a control message such as `/goal pause` goes with `--if working`, and an agent that reports `done` (its turn finished, waiting for input) is sent to without a gate because hc's `--if` accepts only `idle` and `working`. A `blocked` or `error` agent gets nothing unless the sender forces it. A suspended agent leaves its shell in front, and on both runtimes Dori then holds the message whatever the status word says.
 
 Set `notes = false` in `~/.config/herdr-core/config.toml`. With notes on, hc types notes into a parent agent on its own, and Dori's inbox is meant to be the only thing that types into an agent. Dori already opens every terminal with `--no-parent --no-notify`.
 
