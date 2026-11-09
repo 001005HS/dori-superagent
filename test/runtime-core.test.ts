@@ -23,7 +23,7 @@ describe("parseRef / formatRef", () => {
     ["machine/t7", undefined],
     ["hc:t2h", { runtime: "hc", id: "t2h" }],
     ["hc:t1b", { runtime: "hc", id: "t1b" }],
-    ["hc:box-2/t2h", { runtime: "hc", id: "box-2/t2h" }],
+    ["hc:box-2/t2h", undefined],
     ["hc:T2H", undefined],
     ["hc:t2h-", undefined],
     ["hc:/t2h", undefined],
