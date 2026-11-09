@@ -115,6 +115,8 @@ test("CLI add --global from a registered lane's pane is refused; from the lead's
     const add = (pane: string[], rule: string) =>
       run([
         "env",
+        "-u",
+        "HC_TERMINAL_ID",
         ...pane,
         `DORI_CONFIG=${config}`,
         `DORI_STATE_DIR=${state.dir}`,
@@ -173,6 +175,8 @@ test("CLI mark of a global lesson from a registered lane's pane is refused; a re
     const mark = (pane: string[], id: string) =>
       run([
         "env",
+        "-u",
+        "HC_TERMINAL_ID",
         ...pane,
         `DORI_CONFIG=${config}`,
         `DORI_STATE_DIR=${state.dir}`,
