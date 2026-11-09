@@ -6,7 +6,7 @@ import type { Telegram } from "./telegram.ts";
 /** `message` for a new message, `edit` when the owner edited an earlier one. */
 export type TgInboundKind = "message" | "edit";
 
-export type TgMedia = { readonly kind: string; readonly fileId: string; readonly messageId: number };
+export type TgMedia = { readonly kind: string; readonly fileId: string; readonly messageId?: number };
 
 export type TgInbound = {
   readonly kind: TgInboundKind;
@@ -14,6 +14,8 @@ export type TgInbound = {
   readonly chat: number;
   readonly thread?: number;
   readonly updateId: number;
+  /** The Telegram message_id — the id a later edit replaces (edit lines print it as mid=). */
+  readonly messageId?: number;
   readonly from: number;
   readonly username?: string;
   readonly text?: string;
@@ -48,9 +50,10 @@ export type TgInboundStore = { load(): number; save(offset: number): void };
 /**
  * The inbound watch loop. Without `--loop` (loopMin <= 0) it is one-shot: a single
  * bounded poll, then it returns — scripts rely on that. With `--loop`, it re-polls
- * immediately after any poll that emitted a line (the 25s long-poll already returns
- * on arrival, so bursts deliver without waiting out the interval) and only sleeps
- * after an idle poll.
+ * immediately after any poll that returned updates — kept or gate-dropped alike, since
+ * more may be waiting behind that batch — and only sleeps after a truly empty poll
+ * (the 25s long-poll already returns on arrival, so bursts deliver without waiting
+ * out the interval).
  */
 export const telegramInboundLoop = async (
   tg: Telegram,
@@ -62,14 +65,15 @@ export const telegramInboundLoop = async (
   sleep: (ms: number) => Promise<void> = (ms) => Bun.sleep(ms),
 ): Promise<void> => {
   for (;;) {
-    let emitted = 0;
+    let polled: { inbound: readonly TgInbound[]; updates: number } | undefined;
     try {
-      emitted = (await pollTelegramInbound(tg, store, opts, emit)).length;
+      polled = await pollTelegramInbound(tg, store, opts, emit);
     } catch (e) {
       warn(e instanceof Error ? e.message : String(e));
     }
     if (loopMin <= 0) return; // one-shot: one bounded drain
-    if (emitted === 0) await sleep(loopMin * 60_000);
+    if (polled !== undefined && polled.updates > 0) continue; // more may be waiting behind this batch
+    await sleep(loopMin * 60_000);
   }
 };
 
@@ -84,7 +88,8 @@ export const fileTgInboundStore = (path: string): TgInboundStore => {
           // A corrupt offset must not silently replay the whole history.
           if (!warned) {
             warned = true;
-            console.error(`WARN telegram-offset at ${path} is unparseable (${n}); restarting from 0 (warned once)`);
+            // stdout like every other inbound WARN, so a monitor filtering stdout sees it.
+            console.log(`WARN telegram-offset at ${path} is unparseable (${n}); restarting from 0 (warned once)`);
           }
           return 0;
         }
@@ -117,6 +122,7 @@ type TgMessage = {
   readonly message_thread_id?: number;
   readonly text?: string;
   readonly caption?: string;
+  readonly location?: unknown;
   readonly voice?: TgFile;
   readonly audio?: TgFile;
   readonly video?: TgFile;
@@ -150,7 +156,8 @@ const mediaOf = (m: TgMessage): TgMedia | undefined => {
     ["photo", m.photo?.[m.photo.length - 1]],
   ];
   for (const [kind, f] of kinds)
-    if (f?.file_id !== undefined) return { kind, fileId: f.file_id, messageId: m.message_id ?? 0 };
+    if (f?.file_id !== undefined)
+      return { kind, fileId: f.file_id, ...(m.message_id === undefined ? {} : { messageId: m.message_id }) };
   return undefined;
 };
 
@@ -169,7 +176,7 @@ export const pollTelegramInbound = async (
   store: TgInboundStore,
   opts: TgInboundOptions,
   emit: (inbound: TgInbound) => void = () => {},
-): Promise<TgInbound[]> => {
+): Promise<{ inbound: readonly TgInbound[]; updates: number }> => {
   const updates = await tg.call<readonly TgUpdate[]>("getUpdates", {
     offset: store.load(),
     timeout: 25,
@@ -198,11 +205,18 @@ export const pollTelegramInbound = async (
       store.save(u.update_id + 1);
       continue;
     }
+    // A live location arrives as a stream of edited_message updates carrying no new
+    // text; emitting one line per refresh would flood the consumer. Drop them.
+    if (kind === "edit" && m!.location !== undefined && m!.text === undefined && m!.caption === undefined) {
+      store.save(u.update_id + 1);
+      continue;
+    }
     const source = m!.chat!.type === "private" ? "dm" : "topic";
     const thread = source === "topic" ? (threadOf(m!) ?? 1) : threadOf(m!);
     const inbound: TgInbound = {
       kind,
       source,
+      ...(m!.message_id === undefined ? {} : { messageId: m!.message_id }),
       chat: Number(m!.chat!.id),
       ...(thread === undefined ? {} : { thread }),
       updateId: u.update_id,
@@ -218,5 +232,5 @@ export const pollTelegramInbound = async (
     out.push(inbound);
     store.save(u.update_id + 1);
   }
-  return out;
+  return { inbound: out, updates: updates.length };
 };

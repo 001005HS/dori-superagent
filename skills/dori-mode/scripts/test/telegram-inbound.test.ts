@@ -62,7 +62,11 @@ test("owner DMs pass, non-owner and bot messages drop, offset still advances", a
     ],
   ]);
   const store = fileTgInboundStore(join(state.dir, "tg-off-1"));
-  const out = await pollTelegramInbound(mk(http), store, { ownerId: OWNER, groupChatId: GROUP, topicId: TOPIC });
+  const { inbound: out } = await pollTelegramInbound(mk(http), store, {
+    ownerId: OWNER,
+    groupChatId: GROUP,
+    topicId: TOPIC,
+  });
   expect(out.length).toBe(1);
   expect(out[0]!.source).toBe("dm");
   expect(out[0]!.text).toBe("hi");
@@ -81,7 +85,11 @@ test("configured topic passes, other topics and other groups drop", async () => 
     ],
   ]);
   const store = fileTgInboundStore(join(state.dir, "tg-off-2"));
-  const out = await pollTelegramInbound(mk(http), store, { ownerId: OWNER, groupChatId: GROUP, topicId: TOPIC });
+  const { inbound: out } = await pollTelegramInbound(mk(http), store, {
+    ownerId: OWNER,
+    groupChatId: GROUP,
+    topicId: TOPIC,
+  });
   expect(out.length).toBe(1);
   expect(out[0]!.source).toBe("topic");
   expect(out[0]!.thread).toBe(TOPIC);
@@ -100,7 +108,11 @@ test("a reply in the General topic counts as topic 1, not its reply-root id", as
     ],
   ]);
   const store = fileTgInboundStore(join(state.dir, "tg-off-3"));
-  const out = await pollTelegramInbound(mk(http), store, { ownerId: OWNER, groupChatId: GROUP, topicId: 1 });
+  const { inbound: out } = await pollTelegramInbound(mk(http), store, {
+    ownerId: OWNER,
+    groupChatId: GROUP,
+    topicId: 1,
+  });
   expect(out.length).toBe(2);
   expect(out[0]!.thread).toBe(1);
   expect(out[1]!.thread).toBe(1);
@@ -114,7 +126,7 @@ test("a private chat run with topics carries the topic on DMs", async () => {
     ],
   ]);
   const store = fileTgInboundStore(join(state.dir, "tg-off-4"));
-  const out = await pollTelegramInbound(mk(http), store, { ownerId: OWNER });
+  const { inbound: out } = await pollTelegramInbound(mk(http), store, { ownerId: OWNER });
   expect(out.length).toBe(2);
   expect(out[0]!.thread).toBeUndefined();
   expect(out[1]!.source).toBe("dm");
@@ -126,7 +138,7 @@ test("without a configured group only DMs arrive", async () => {
     [{ update_id: 50, message: msg(OWNER, GROUP, "supergroup", "group msg", TOPIC, true) }],
   ]);
   const store = fileTgInboundStore(join(state.dir, "tg-off-5"));
-  const out = await pollTelegramInbound(mk(http), store, { ownerId: OWNER });
+  const { inbound: out } = await pollTelegramInbound(mk(http), store, { ownerId: OWNER });
   expect(out.length).toBe(0);
 });
 
@@ -137,10 +149,10 @@ test("restart resumes from the persisted offset", async () => {
   ]);
   const store = fileTgInboundStore(join(state.dir, "tg-off-6"));
   store.save(60); // what a previous run persisted
-  const first = await pollTelegramInbound(mk(http), store, { ownerId: OWNER });
+  const { inbound: first } = await pollTelegramInbound(mk(http), store, { ownerId: OWNER });
   expect(first.length).toBe(0);
   expect(bodies[0]!["offset"]).toBe(60);
-  const second = await pollTelegramInbound(mk(http), store, { ownerId: OWNER });
+  const { inbound: second } = await pollTelegramInbound(mk(http), store, { ownerId: OWNER });
   expect(second.length).toBe(1);
   expect(second[0]!.updateId).toBe(60);
   expect(bodies[1]!["offset"]).toBe(60);
@@ -174,7 +186,9 @@ test("a crash mid-emit replays the unprinted message, not the printed one", asyn
   expect(store.load()).toBe(71); // not advanced past 71
   // Third poll restarts from 71 and returns the unprinted messages again.
   const seen3: string[] = [];
-  const out3 = await pollTelegramInbound(mk(http), store, { ownerId: OWNER }, (i) => seen3.push(i.text ?? ""));
+  const { inbound: out3 } = await pollTelegramInbound(mk(http), store, { ownerId: OWNER }, (i) =>
+    seen3.push(i.text ?? ""),
+  );
   expect(seen3).toEqual(["second", "third"]);
   expect(out3.map((i) => i.updateId)).toEqual([71, 72]);
   expect(bodies[2]!["offset"]).toBe(71);

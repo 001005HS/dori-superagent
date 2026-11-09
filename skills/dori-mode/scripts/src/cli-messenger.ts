@@ -7,6 +7,7 @@ import { pollSlackInbound } from "./messenger/slack-inbound.ts";
 import { slackPresence } from "./messenger/slack-presence.ts";
 import { Telegram } from "./messenger/telegram.ts";
 import { envInt, fileTgInboundStore, telegramInboundLoop } from "./messenger/telegram-inbound.ts";
+import { formatTelegramInbound } from "./messenger/telegram-line.ts";
 import { ThreadLedger } from "./messenger/thread-ledger.ts";
 import { realTimers } from "./messenger/typing.ts";
 import { transcribe, TranscriptionError } from "./messenger/voice.ts";
@@ -104,7 +105,6 @@ const telegramInbound = async (stateDir: string, minutes: number): Promise<void>
   const groupChatId = process.env["DORI_TELEGRAM_GROUP_ID"] === undefined ? undefined : num("DORI_TELEGRAM_GROUP_ID");
   const topicId = process.env["DORI_TELEGRAM_TOPIC_ID"] === undefined ? undefined : num("DORI_TELEGRAM_TOPIC_ID");
   console.log(`INBOUND_READY telegram owner=${ownerId} group=${groupChatId ?? "-"} topic=${topicId ?? "-"}`);
-  // Full text, JSON-escaped on one line: getUpdates cannot fetch a message twice.
   await telegramInboundLoop(
     tg,
     store,
@@ -114,11 +114,7 @@ const telegramInbound = async (stateDir: string, minutes: number): Promise<void>
       ...(topicId !== undefined ? { topicId } : {}),
     },
     minutes,
-    (i) =>
-      console.log(
-        `INBOUND ${i.kind === "edit" ? "edit:" : ""}${i.source} ${i.chat} ${i.thread ?? "-"} ${i.updateId} ${i.from} ${JSON.stringify(i.text ?? "")}` +
-          (i.media === undefined ? "" : ` file=${i.media.kind}:${i.media.fileId}`),
-      ),
+    (i) => console.log(formatTelegramInbound(i)),
     (m) => console.log(`WARN ${m}`.slice(0, 300)),
   );
 };
