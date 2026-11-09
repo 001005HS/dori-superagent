@@ -21,6 +21,14 @@ describe("parseRef / formatRef", () => {
     ["hc:", undefined],
     ["w1:p3 ", undefined],
     ["machine/t7", undefined],
+    ["hc:t2h", { runtime: "hc", id: "t2h" }],
+    ["hc:t1b", { runtime: "hc", id: "t1b" }],
+    ["hc:box-2/t2h", undefined],
+    ["hc:T2H", undefined],
+    ["hc:t2h-", undefined],
+    ["hc:/t2h", undefined],
+    ["hc:a/b/t2h", undefined],
+    ["t2h", undefined],
   ] as const)("parseRef(%p)", (text, want) => {
     expect(parseRef(text)).toEqual(want);
   });
