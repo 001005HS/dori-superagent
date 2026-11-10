@@ -1,0 +1,26 @@
+skills/dori-mode/SKILL.md
+  h_e90f0321dd544b 100
+skills/dori-mode/references/scripts.md
+  h_e90f0321dd544b 84-85
+skills/dori-mode/scripts/src/boot-checks.ts
+  h_e90f0321dd544b 1-68
+skills/dori-mode/scripts/src/boot.ts
+  h_e90f0321dd544b 5,129-131,133-135
+skills/dori-mode/scripts/test/boot-checks.test.ts
+  h_e90f0321dd544b 1-137
+skills/dori-mode/scripts/test/boot-journals.test.ts
+  h_e90f0321dd544b 88,90
+skills/dori-mode/scripts/test/boot.test.ts
+  h_e90f0321dd544b 85-87,101-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e8d62d60b958dd12c90c36dcc3f5533c58302859",
+  "prompts": {},
+  "humans": {
+    "h_e90f0321dd544b": {
+      "author": "001005HS <99410048+001005HS@users.noreply.github.com>"
+    }
+  }
+}
